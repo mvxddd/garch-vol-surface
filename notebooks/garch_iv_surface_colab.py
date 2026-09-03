@@ -16,7 +16,7 @@
 # notebook stays readable and the logic stays tested.
 #
 # ---
-# **Runtime:** ~2 minutes on Colab (~30s without the walk-forward validation).
+# **Runtime:** ≈2 minutes on Colab (≈30s without the walk-forward validation).
 
 # %% [markdown]
 # ## Cell 1 — Environment setup
@@ -219,13 +219,13 @@ fig.show()
 # At every out-of-sample date we forecast using **only** data available up to
 # that date, then compare against what actually happened next. Parameters are
 # re-estimated monthly and the variance recursion is filtered forward in
-# between — exactly how a desk runs it, and ~20× cheaper than refitting daily.
+# between — exactly how a desk runs it, and ≈20× cheaper than refitting daily.
 #
 # Two naive benchmarks are included on purpose: a 21-day trailing realised vol
 # and RiskMetrics EWMA. A GARCH model that cannot beat EWMA has not earned its
 # complexity, and reporting that honestly is the point.
 #
-# *This is the slow cell (~1 minute). Set `RUN_WALK_FORWARD = False` to skip it.*
+# *This is the slow cell (≈1 minute). Set `RUN_WALK_FORWARD = False` to skip it.*
 
 # %%
 from volsurface.analytics import metrics as M
@@ -317,7 +317,7 @@ display(garch_ts)
 #
 # * **Forwards come from put-call parity**, not from a guessed dividend yield.
 #   Regressing C−P on K recovers the forward the market is actually using. An
-#   error of 0.3% in the forward would show up as ~1 vol point of fake skew.
+#   error of 0.3% in the forward would show up as ≈1 vol point of fake skew.
 # * **Only OTM quotes are kept.** ITM options carry the same volatility
 #   information but far more intrinsic value, so the same dollar spread becomes a
 #   much larger error in vol.
@@ -432,8 +432,9 @@ fig.show()
 #
 # One subtlety that is easy to get wrong and expensive to miss: implied vols live
 # on a **calendar-day** clock and GARCH horizons on a **trading-day** clock. A
-# 21-trading-day forecast must be compared against a ~30-calendar-day option.
-# Mixing the two is a ~20% error in $T$ that shows up as a spurious signal.
+# 21-trading-day forecast must be compared against an option with about 30
+# calendar days to run. Mixing the two is a 20% error in $T$ that shows up as
+# a spurious signal.
 #
 # A positive premium is the normal state — selling options means selling
 # insurance against exactly the states investors most fear. When the premium goes
