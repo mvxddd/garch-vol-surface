@@ -1,16 +1,24 @@
 # GARCH Volatility Forecasting & the Implied Volatility Surface
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mvxddd/garch-vol-surface/blob/main/notebooks/garch_iv_surface_colab.ipynb)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 Fit GARCH-family models to forecast realised volatility, build an
 **arbitrage-free implied-volatility surface** from live option chains, and
 measure the wedge between them — the volatility risk premium — with the
 diagnostics needed to decide whether that wedge is real.
 
 ```bash
+git clone https://github.com/mvxddd/garch-vol-surface && cd garch-vol-surface
 pip install -r requirements.txt
 python scripts/run_pipeline.py --ticker SPY          # full study, ~2 minutes
 python scripts/run_pipeline.py --provider synthetic  # no network required
 pytest -q                                            # 40 tests, ~5 seconds
 ```
+
+Or [open the notebook in Colab](https://colab.research.google.com/github/mvxddd/garch-vol-surface/blob/main/notebooks/garch_iv_surface_colab.ipynb) — cell 1 installs the one
+dependency Colab lacks and clones the package for you.
 
 Results below are from a live SPY run (2 Sep 2026): **4,417 raw quotes → 1,620
 clean implied vols across 12 expiries**, every smile calibrated

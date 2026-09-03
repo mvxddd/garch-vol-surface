@@ -41,25 +41,40 @@ if missing:
     print(f"Installing: {', '.join(missing)}")
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", *missing], check=True)
 
-# Make the repository importable whether it was cloned, uploaded, or installed.
-SEARCH = [Path.cwd(), Path.cwd().parent, Path("/content"),
-          Path("/content/garch-vol-surface"), Path("/content/drive/MyDrive")]
-for candidate in SEARCH:
-    if (candidate / "volsurface").is_dir():
-        if str(candidate) not in sys.path:
-            sys.path.insert(0, str(candidate))
-        break
-else:
-    try:
-        import volsurface  # noqa: F401  (already installed, e.g. pip install -e .)
-    except ImportError:
-        raise SystemExit(
-            "Could not find the `volsurface` package.\n"
-            "Searched: " + ", ".join(str(p) for p in SEARCH) + "\n\n"
-            "In Colab, clone the repository first:\n"
-            "    !git clone <your-repo-url> /content/garch-vol-surface\n"
-            "or upload the project folder and re-run this cell from inside it."
-        )
+REPO_URL = "https://github.com/mvxddd/garch-vol-surface"
+
+def locate_package() -> Path | None:
+    """Find a directory containing the `volsurface` package, or None."""
+    for candidate in (Path.cwd(), Path.cwd().parent, Path("/content"),
+                      Path("/content/garch-vol-surface"),
+                      Path("/content/drive/MyDrive")):
+        if (candidate / "volsurface").is_dir():
+            return candidate
+    return None
+
+# Make the repository importable whether it was cloned, uploaded, installed, or
+# not present at all. On Colab (opened straight from the README badge) nothing
+# is present, so clone it — that is what makes the badge genuinely one-click.
+root = locate_package()
+if root is None:
+    IN_COLAB = "google.colab" in sys.modules or Path("/content").is_dir()
+    if IN_COLAB:
+        target = Path("/content/garch-vol-surface")
+        print(f"Cloning {REPO_URL} → {target}")
+        subprocess.run(["git", "clone", "--depth", "1", REPO_URL, str(target)],
+                       check=True)
+        root = target
+    else:
+        try:
+            import volsurface  # noqa: F401  (installed, e.g. pip install -e .)
+        except ImportError:
+            raise SystemExit(
+                "Could not find the `volsurface` package.\n\n"
+                f"Clone it:  git clone {REPO_URL}\n"
+                "then run this notebook from inside the project folder."
+            )
+if root is not None and str(root) not in sys.path:
+    sys.path.insert(0, str(root))
 
 import numpy as np
 import pandas as pd
