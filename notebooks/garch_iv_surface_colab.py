@@ -21,9 +21,11 @@
 # %% [markdown]
 # ## Cell 1 — Environment setup
 #
-# `arch` is the only dependency Colab does not ship with. If you are running
-# from a clone of the repository, the `sys.path` line makes the package
-# importable without installing it.
+# `arch` is the only dependency Colab does not ship with. The cell then locates
+# the `volsurface` package: it searches the usual places, and if you opened this
+# straight from the README badge — where nothing is on the machine yet — it
+# clones the repository for you. Running from your own clone, it just adds the
+# project to `sys.path` without installing anything.
 
 # %%
 import subprocess
