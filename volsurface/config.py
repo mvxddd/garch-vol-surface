@@ -91,6 +91,15 @@ class OptionsConfig:
     min_iv: float = 0.01
     min_quotes_per_expiry: int = 6     # need enough points to fit a smile
 
+    # Listed equity options are American. Inverting them with a European model
+    # biases implied vol *upward*, by the early-exercise value. The default
+    # stays "european" because it is ~40x faster and the bias is small for OTM
+    # index options; switch to "american" for single names, deep strikes, or
+    # any time rates and dividends are large. `early_exercise_premium` in the
+    # quote frame reports what the choice is worth, per quote.
+    exercise_style: Literal["european", "american"] = "european"
+    binomial_steps: int = 128
+
     risk_free_rate: float = 0.042      # flat fallback if no curve is supplied
     dividend_yield: float | None = None  # None -> implied from put-call parity
     use_parity_forward: bool = True    # derive F from C-P regression (preferred)

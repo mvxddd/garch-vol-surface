@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import CALENDAR_DAYS, OptionsConfig
+from ..models.american import early_exercise_premium, implied_vol_american
 from ..models.black_scholes import (greeks, implied_forward_from_parity,
                                     implied_vol)
 from ..utils import get_logger
@@ -196,7 +197,9 @@ def build_iv_quotes(clean: pd.DataFrame, forwards: pd.DataFrame,
                    which is what tells you whether a "signal" is tradeable
     """
     funnel = funnel or clean.attrs.get("funnel") or QuoteFunnel()
-    df = clean.merge(forwards[["expiry", "forward"]], on="expiry", how="inner")
+    fwd_cols = ["expiry", "forward"] + (["implied_q"] if "implied_q" in forwards
+                                        else [])
+    df = clean.merge(forwards[fwd_cols], on="expiry", how="inner")
     df = df[np.isfinite(df["forward"]) & (df["forward"] > 0)]
 
     df["moneyness"] = df["strike"] / df["forward"]
@@ -218,11 +221,35 @@ def build_iv_quotes(clean: pd.DataFrame, forwards: pd.DataFrame,
     call = df["option_type"].eq("call").to_numpy()
     r = cfg.risk_free_rate
 
-    df["iv"] = implied_vol(df["mid"].to_numpy(), F, K, T, r=r, is_call=call)
-    # Vol of the bid and the ask — the bid/ask spread expressed in vol points.
-    with np.errstate(invalid="ignore"):
-        df["iv_bid"] = implied_vol(df["bid"].to_numpy(), F, K, T, r=r, is_call=call)
-        df["iv_ask"] = implied_vol(df["ask"].to_numpy(), F, K, T, r=r, is_call=call)
+    if cfg.exercise_style == "american":
+        # Price on the spot with the parity-implied dividend yield, so the only
+        # difference from the European path is early exercise and not a
+        # different dividend assumption.
+        spot_arr = df["spot"].to_numpy()
+        q_arr = (df["implied_q"].to_numpy() if "implied_q" in df
+                 else np.full(len(df), 0.0))
+        steps = cfg.binomial_steps
+        LOG.info("Inverting %d quotes under AMERICAN exercise "
+                 "(binomial, %d steps) — slower than the European path",
+                 len(df), steps)
+        inv = lambda px: implied_vol_american(  # noqa: E731
+            px, spot_arr, K, T, r=r, q=q_arr, is_call=call, steps=steps)
+        df["iv"] = inv(df["mid"].to_numpy())
+        with np.errstate(invalid="ignore"):
+            df["iv_bid"] = inv(df["bid"].to_numpy())
+            df["iv_ask"] = inv(df["ask"].to_numpy())
+        # What the choice of exercise style is actually worth, per quote.
+        df["early_exercise_premium"] = early_exercise_premium(
+            spot_arr, K, T, np.nan_to_num(df["iv"].to_numpy(), nan=0.2),
+            r=r, q=q_arr, is_call=call, steps=steps)
+    else:
+        df["iv"] = implied_vol(df["mid"].to_numpy(), F, K, T, r=r, is_call=call)
+        # Vol of the bid and the ask — the spread expressed in vol points.
+        with np.errstate(invalid="ignore"):
+            df["iv_bid"] = implied_vol(df["bid"].to_numpy(), F, K, T, r=r,
+                                       is_call=call)
+            df["iv_ask"] = implied_vol(df["ask"].to_numpy(), F, K, T, r=r,
+                                       is_call=call)
 
     n_before = len(df)
     df = df[np.isfinite(df["iv"])]

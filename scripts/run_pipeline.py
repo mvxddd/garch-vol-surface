@@ -44,6 +44,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-cache", action="store_true")
     p.add_argument("--no-fallback", action="store_true",
                    help="fail loudly instead of falling back to synthetic data")
+    p.add_argument("--american", action="store_true",
+                   help="invert quotes under American exercise (binomial tree); "
+                        "slower, but removes the upward bias on long-dated puts")
     p.add_argument("--snapshot", action="store_true",
                    help="save today's surface to the history store and z-score "
                         "it against its own past")
@@ -70,6 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     cfg.options.max_expiries = args.max_expiries
     cfg.options.risk_free_rate = args.rate
     cfg.surface.method = args.surface_method
+    cfg.options.exercise_style = "american" if args.american else "european"
     cfg.analytics.save_snapshot = args.snapshot
     cfg.analytics.history_dir = Path(args.out) / "history"
     cfg.output_dir = Path(args.out)

@@ -19,7 +19,7 @@ python scripts/run_pipeline.py --provider synthetic  # no network required
 python scripts/run_pipeline.py --lang ru             # charts and CLI in Russian
 python scripts/run_pipeline.py --snapshot            # also save to the history store
 streamlit run app.py                                 # interactive web interface
-pytest -q                                            # 78 tests, ~12 seconds
+pytest -q                                            # 91 tests, ~12 seconds
 ```
 
 Or [open the notebook in Colab](https://colab.research.google.com/github/mvxddd/garch-vol-surface/blob/main/notebooks/garch_iv_surface_colab.ipynb) — cell 1 installs the one
@@ -82,6 +82,40 @@ today's chain. There is no history of option prices in the free data, so such a
 "backtest" would re-price the past with today's surface — a look-ahead that
 guarantees a beautiful equity curve. `signal_backtest` replays real snapshot
 history instead, and refuses to run on a store younger than 60 days.
+
+### American exercise — `volsurface/models/american.py`
+
+Every listed equity option is American, and pricing one as European biases its
+implied volatility **upward** by the early-exercise value. A vectorised
+Cox-Ross-Rubinstein tree prices and inverts the American contract; the whole
+chain marches down the tree together in numpy, so 1,553 live SPY quotes invert
+in about a second instead of minutes.
+
+What the choice is worth, measured on that chain (mean IV shift, vol points):
+
+| Days | Calls | Puts |
+|---:|---:|---:|
+| 28 | +0.01 | −0.05 |
+| 87 | +0.01 | −0.16 |
+| 196 | +0.01 | −0.21 |
+| 378 | +0.01 | **−0.64** |
+
+Textbook, and a good check that the implementation is right: **calls barely
+move at all** (with a dividend yield below the risk-free rate, exercising a call
+early is worth nothing), while the put shift grows monotonically with maturity
+and reaches 1.7 vol points on the worst single contract. Of 1,553 quotes, 305
+puts shift by more than 0.1 vol point and **zero calls do**.
+
+So European remains the default: it is ~40x faster and the bias is negligible
+inside three months, which is where most of the liquidity is. Turn American on
+(`--american`, or `cfg.options.exercise_style`) for long-dated strikes, single
+names, or whenever rates and dividends are large. Every quote then carries an
+`early_exercise_premium` column reporting what the choice was worth to it.
+
+One honest limit: inside about three weeks the early-exercise value is smaller
+than the tree's own discretisation error, so the difference there is numerical
+noise rather than signal. `convergence_check()` measures that error for your
+parameters instead of asking you to trust a step count.
 
 ### Web interface — `app.py`
 
@@ -226,8 +260,9 @@ pipeline records a status per stage rather than dying. This is tested
   expiries**, which manufactures small calendar violations. The live run flagged
   two, both under 0.003 in total variance — noise, not opportunity.
 - Open interest updates once daily, before the open.
-- Listed equity options are **American**; this project prices them as European.
-  For OTM options on a low-dividend index the bias is small but non-zero.
+- Listed equity options are **American**. Both models ship: European (Black-76,
+  the fast default) and American (a vectorised binomial tree, `--american`).
+  See *American exercise* below for what the choice is worth, measured.
 
 ## 5. Required Python Libraries
 
@@ -280,7 +315,7 @@ garch-vol-surface/
 │   ├── run_pipeline.py         # CLI
 │   ├── build_dashboard.py      # figures + report → one HTML page
 │   └── build_notebook.py       # .py → .ipynb
-├── tests/                      # 78 tests
+├── tests/                      # 91 tests
 └── outputs/
     ├── figures/                # 15 PNG + 1 interactive HTML
     └── reports/                # 15 CSV tables + run_report.json
@@ -529,7 +564,7 @@ over 1,906 observations.
 
 ## 13. Final Deliverables
 
-- **`volsurface/`** — a layered, tested Python package (~7,000 lines) with
+- **`volsurface/`** — a layered, tested Python package (~7,300 lines) with
   production error handling and a synthetic fallback that makes every path
   runnable offline.
 - **A Colab notebook** — 40 cells, executes head-to-tail in ~2 minutes,
@@ -538,7 +573,7 @@ over 1,906 observations.
 - **15 figures** including an interactive 3-D surface.
 - **15 CSV tables + a JSON run report** capturing config, per-stage status and
   headline results — so any figure can be traced back to the run that made it.
-- **78 tests** covering parity, Greeks, inversion round-trips, arbitrage
+- **91 tests** covering parity, Greeks, inversion round-trips, arbitrage
   freedom, look-ahead bias, and graceful degradation when a feed dies.
 
 ## 14. Resume Description
@@ -580,8 +615,6 @@ over 1,906 observations.
 
 **Modelling**
 
-- **American exercise** via a binomial/PDE inverter or a Barone-Adesi-Whaley
-  approximation — removes the main structural bias for single names.
 - **HAR-RV on intraday data.** With 5-minute bars, realised-volatility models
   routinely beat GARCH at horizons beyond a day.
 - **Stochastic-volatility calibration** (Heston, SABR, rough Bergomi) fitted to
