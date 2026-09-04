@@ -25,6 +25,7 @@ from .analytics import vrp as VRP
 from .config import Config
 from .data import load_option_chain, load_prices, prepare_quotes
 from .data.prices import compute_returns, load_vol_index, synthetic_vol_index
+from .history import SurfaceHistory, historical_anomalies, snapshot
 from .i18n import set_language
 from .models import garch as G
 from .models.surface import build_surface
@@ -71,6 +72,8 @@ class PipelineResult:
     vrp_history: pd.DataFrame | None = None
     vrp_stats: dict[str, float] = field(default_factory=dict)
     anomalies: pd.DataFrame | None = None
+    history_zscores: pd.DataFrame | None = None
+    history_summary: dict[str, object] = field(default_factory=dict)
     figures: dict[str, str] = field(default_factory=dict)
 
     # ---------------------------------------------------------------- #
@@ -101,6 +104,8 @@ class PipelineResult:
             out["vrp_signal"] = row["signal"]
         if self.anomalies is not None:
             out["n_anomalies"] = int(len(self.anomalies))
+        if self.history_summary:
+            out["n_snapshots"] = self.history_summary.get("n_snapshots", 0)
         return out
 
     def to_json(self) -> str:
@@ -130,6 +135,7 @@ class PipelineResult:
             "vrp_snapshot": self.vrp,
             "vrp_history": self.vrp_history,
             "anomalies": self.anomalies,
+            "history_zscores": self.history_zscores,
         }
         for name, df in tables.items():
             if df is not None and len(df):
@@ -286,11 +292,43 @@ def run_pipeline(cfg: Config | None = None, make_figures: bool = True,
 
     _stage(res, "vrp_history", _vrp_history)
 
+    def _snapshot():
+        """Persist today's surface, then score it against its own past."""
+        if res.surface is None:
+            raise RuntimeError("No surface to snapshot.")
+        store = SurfaceHistory(cfg.analytics.history_dir)
+        row = snapshot(res.surface, cfg.data.ticker, vrp=res.vrp)
+        store.append(row, cfg.data.ticker)
+        res.history_summary = store.summary(cfg.data.ticker)
+        res.history_zscores = store.zscores(
+            cfg.data.ticker, lookback=cfg.analytics.history_lookback_days,
+            min_observations=cfg.analytics.history_min_observations)
+
+    if cfg.analytics.save_snapshot:
+        _stage(res, "surface_history", _snapshot)
+    else:
+        res.status["surface_history"] = "skipped"
+
     def _screen():
         if res.surface is None:
             raise RuntimeError("No surface to screen.")
-        res.anomalies = SK.detect_anomalies(res.surface, cfg.analytics,
-                                            vrp=res.vrp_history)
+        found = SK.detect_anomalies(res.surface, cfg.analytics,
+                                    vrp=res.vrp_history)
+        # Historical extremes come from the snapshot store and are reported in
+        # the same shape, so both kinds of finding rank in one list.
+        if res.history_zscores is not None and not res.history_zscores.empty:
+            hist_found = historical_anomalies(
+                res.history_zscores, cfg.analytics.anomaly_z_threshold)
+            if not hist_found.empty:
+                found = pd.concat([found, hist_found], ignore_index=True)
+                order = {"high": 0, "medium": 1, "low": 2}
+                found = (found.assign(_r=found["severity"].map(order).fillna(3))
+                              .sort_values(["_r", "z_score"],
+                                           key=lambda s: s.abs()
+                                           if s.name == "z_score" else s,
+                                           ascending=[True, False])
+                              .drop(columns="_r").reset_index(drop=True))
+        res.anomalies = found
 
     _stage(res, "anomaly_screen", _screen)
 

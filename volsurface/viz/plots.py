@@ -67,6 +67,28 @@ def _label_line_end(ax, x, y, text: str, color: str, dx: float = 0.01,
                 va="center", ha="left", clip_on=False)
 
 
+def _money(ax, axis: str = "y"):
+    """
+    Compact currency ticks (1.5M, −250k) instead of matplotlib's shared "1e6"
+    offset, which it parks in the top-left corner right on top of the subtitle.
+    """
+    from matplotlib.ticker import FuncFormatter
+
+    def fmt(v, _):
+        a = abs(v)
+        if a >= 1e9:
+            return f"{v/1e9:,.1f}B"
+        if a >= 1e6:
+            return f"{v/1e6:,.1f}M"
+        if a >= 1e3:
+            return f"{v/1e3:,.0f}k"
+        return f"{v:,.0f}"
+
+    target = ax.yaxis if axis == "y" else ax.xaxis
+    target.set_major_formatter(FuncFormatter(fmt))
+    target.get_offset_text().set_visible(False)
+
+
 def _pct(ax, axis: str = "y", decimals: int = 0):
     from matplotlib.ticker import FuncFormatter
 
@@ -803,5 +825,197 @@ def plot_anomalies(anomalies: pd.DataFrame, path: str | Path | None = None):
     ax.set_axisbelow(True)
     ax.margins(x=0.28)
     _titles(ax, t("anom.title"), t("anom.subtitle"), xlabel=t("anom.axis"))
+    fig.tight_layout()
+    return _save(fig, path)
+
+
+# --------------------------------------------------------------------------- #
+# 6. Portfolio risk
+# --------------------------------------------------------------------------- #
+def plot_vega_ladder(ladder: pd.DataFrame, by: str = "tenor",
+                     path: str | Path | None = None):
+    """
+    Vega by bucket as diverging bars — the sign is the whole point, so long and
+    short buckets take the two poles of the diverging ramp rather than one hue.
+    """
+    import matplotlib.pyplot as plt
+
+    th = TH.active()
+    neg, _mid, pos = th.diverging
+    df = ladder[ladder["n"] > 0] if "n" in ladder else ladder
+    if df.empty:
+        fig, ax = plt.subplots(figsize=(8, 2.2))
+        ax.axis("off")
+        ax.text(0, 0.5, t("pf.no_positions"), fontsize=13, fontweight="bold",
+                color=th.ink, transform=ax.transAxes)
+        return _save(fig, path)
+
+    total = float(df["vega"].sum())
+    fig, ax = plt.subplots(figsize=(9, 0.52 * len(df) + 2.4))
+    bars = ax.barh(df["bucket"].astype(str), df["vega"],
+                   height=0.62, edgecolor=th.surface, linewidth=1.2,
+                   color=[pos if v >= 0 else neg for v in df["vega"]])
+    ax.bar_label(bars, fmt="%+,.0f", padding=4, fontsize=8.8,
+                 color=th.ink_secondary)
+    ax.axvline(0, color=th.axis, lw=1.0)
+    ax.grid(axis="x")
+    ax.set_axisbelow(True)
+    ax.margins(x=0.20)
+    ax.invert_yaxis()
+    _titles(ax, t("pf.ladder_title", dim=t(f"pf.dim_{by}")),
+            t("pf.ladder_subtitle", total=total), xlabel=t("pf.axis_vega"))
+    fig.tight_layout()
+    return _save(fig, path)
+
+
+def plot_stress_grid(grid: pd.DataFrame, path: str | Path | None = None):
+    """
+    P&L heatmap across simultaneous spot and vol shocks, on a diverging scale
+    centred at zero so profit and loss are never confused for magnitude.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
+
+    th = TH.active()
+    neg, mid, pos = th.diverging
+    values = grid.to_numpy(dtype=float)
+    cmap = LinearSegmentedColormap.from_list("pl", [neg, mid, pos])
+    lim = float(np.nanmax(np.abs(values))) or 1.0
+    norm = TwoSlopeNorm(vmin=-lim, vcenter=0.0, vmax=lim)
+
+    fig, ax = plt.subplots(figsize=(1.15 * grid.shape[1] + 3.4,
+                                    0.62 * grid.shape[0] + 3.0))
+    im = ax.imshow(values, cmap=cmap, norm=norm, aspect="auto")
+
+    ax.set_xticks(range(grid.shape[1]))
+    ax.set_xticklabels([f"{c:+.0%}" for c in grid.columns])
+    ax.set_yticks(range(grid.shape[0]))
+    ax.set_yticklabels([f"{i*100:+.0f}" for i in grid.index])
+
+    # Print the number in every cell: a risk grid is read, not eyeballed.
+    for i in range(grid.shape[0]):
+        for j in range(grid.shape[1]):
+            v = values[i, j]
+            shade = abs(v) / lim
+            ax.text(j, i, f"{v:+,.0f}", ha="center", va="center", fontsize=8.4,
+                    color=th.surface if shade > 0.55 else th.ink,
+                    fontweight="bold" if shade > 0.75 else "normal")
+
+    ax.grid(False)
+    ax.spines[:].set_visible(False)
+    ax.tick_params(length=0)
+    sticky = grid.attrs.get("sticky", "moneyness")
+    _titles(ax, t("pf.stress_title"),
+            t("pf.stress_subtitle", sticky=t(f"pf.sticky_{sticky}")),
+            ylabel=t("pf.axis_vol_shock"), xlabel=t("pf.axis_spot_shock"))
+    fig.tight_layout()
+    return _save(fig, path)
+
+
+# --------------------------------------------------------------------------- #
+# 7. Backtest
+# --------------------------------------------------------------------------- #
+def plot_equity_curve(result, path: str | Path | None = None):
+    """
+    Cumulative P&L with the drawdown underneath.
+
+    Two stacked panels rather than a twin axis: equity and drawdown are
+    different measures, and the drawdown panel is where a short-vol strategy
+    tells the truth about itself.
+    """
+    import matplotlib.pyplot as plt
+
+    th = TH.active()
+    eq = result.equity
+    if eq.empty:
+        raise ValueError("No equity curve to plot.")
+    dd = eq - eq.cummax()
+    st = result.stats
+
+    fig, axes = plt.subplots(2, 1, figsize=(11, 6.4), sharex=True,
+                             gridspec_kw={"height_ratios": [1.7, 1]})
+    ax = axes[0]
+    ax.plot(eq.index, eq.to_numpy(), color=th.categorical[0], lw=2.0)
+    ax.axhline(0, color=th.axis, lw=1.0)
+    ax.fill_between(eq.index, 0, eq.to_numpy(), alpha=0.10,
+                    color=th.categorical[0], lw=0)
+    _money(ax)
+    _titles(ax, t("bt.equity_title",
+                  strategy=result.spec.get("strategy", "strategy")),
+            t("bt.equity_subtitle", n=st.get("n_trades", 0),
+              sharpe=st.get("sharpe_annualised", float("nan")),
+              hit=st.get("hit_rate_pct", 0),
+              cost=st.get("cost_share_of_gross_pct", 0)),
+            ylabel=t("bt.axis_pnl"))
+
+    ax = axes[1]
+    ax.fill_between(dd.index, 0, dd.to_numpy(), color=th.diverging[0],
+                    alpha=0.75, lw=0)
+    ax.axhline(0, color=th.axis, lw=1.0)
+    _money(ax)
+    _titles(ax, t("bt.drawdown"), ylabel=t("bt.axis_pnl"))
+    fig.tight_layout()
+    return _save(fig, path)
+
+
+def plot_trade_distribution(result, path: str | Path | None = None):
+    """
+    Histogram of trade P&L, coloured by sign. For a short-vol strategy this is
+    the single most honest chart in the project: the left tail is the whole
+    risk, and an average or a Sharpe hides it.
+    """
+    import matplotlib.pyplot as plt
+
+    th = TH.active()
+    pnl = result.trades["net_pnl"].dropna().to_numpy()
+    if pnl.size == 0:
+        raise ValueError("No trades to plot.")
+
+    fig, ax = plt.subplots(figsize=(9.5, 4.8))
+    bins = np.histogram_bin_edges(pnl, bins=min(40, max(10, pnl.size // 4)))
+    for lo, hi in zip(bins[:-1], bins[1:]):
+        sel = pnl[(pnl >= lo) & (pnl < hi)]
+        if sel.size:
+            ax.bar((lo + hi) / 2, sel.size, width=(hi - lo) * 0.92,
+                   color=th.diverging[2] if lo >= 0 else th.diverging[0],
+                   edgecolor=th.surface, linewidth=0.8)
+    ax.axvline(0, color=th.axis, lw=1.1)
+    ax.axvline(float(np.mean(pnl)), color=th.ink_secondary, lw=1.4, ls="--")
+    ax.annotate(f"{np.mean(pnl):+,.0f}", xy=(float(np.mean(pnl)), ax.get_ylim()[1]),
+                xytext=(4, -8), textcoords="offset points", fontsize=9,
+                color=th.ink_secondary, fontweight="bold", va="top")
+    _money(ax, axis="x")
+    ratio = result.stats.get("worst_over_avg_win", float("nan"))
+    _titles(ax, t("bt.dist_title"), t("bt.dist_subtitle", ratio=ratio),
+            ylabel=t("bt.axis_n_trades"), xlabel=t("bt.axis_trade_pnl"))
+    fig.tight_layout()
+    return _save(fig, path)
+
+
+def plot_strategy_comparison(table: pd.DataFrame, path: str | Path | None = None):
+    """Sharpe by strategy variant — the answer to 'does timing help?'."""
+    import matplotlib.pyplot as plt
+
+    th = TH.active()
+    df = table.dropna(subset=["sharpe_annualised"]).copy()
+    if df.empty:
+        raise ValueError("No strategies to compare.")
+    df = df.sort_values("sharpe_annualised")
+
+    fig, ax = plt.subplots(figsize=(9.5, 0.6 * len(df) + 2.6))
+    bars = ax.barh(df["strategy"], df["sharpe_annualised"], height=0.6,
+                   color=[th.diverging[2] if v >= 0 else th.diverging[0]
+                          for v in df["sharpe_annualised"]],
+                   edgecolor=th.surface, linewidth=1.2)
+    ax.bar_label(bars, labels=[t("bt.bar_label", sharpe=v, n=int(n))
+                               for v, n in zip(df["sharpe_annualised"],
+                                               df["n_trades"])],
+                 padding=3, fontsize=9, color=th.ink_secondary)
+    ax.axvline(0, color=th.axis, lw=1.0)
+    ax.grid(axis="x")
+    ax.set_axisbelow(True)
+    ax.margins(x=0.18)
+    _titles(ax, t("bt.compare_title"), t("bt.compare_subtitle"),
+            xlabel=t("bt.axis_sharpe"))
     fig.tight_layout()
     return _save(fig, path)

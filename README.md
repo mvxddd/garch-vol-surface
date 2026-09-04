@@ -17,7 +17,9 @@ pip install -r requirements.txt
 python scripts/run_pipeline.py --ticker SPY          # full study, ~2 minutes
 python scripts/run_pipeline.py --provider synthetic  # no network required
 python scripts/run_pipeline.py --lang ru             # charts and CLI in Russian
-pytest -q                                            # 58 tests, ~9 seconds
+python scripts/run_pipeline.py --snapshot            # also save to the history store
+streamlit run app.py                                 # interactive web interface
+pytest -q                                            # 78 tests, ~12 seconds
 ```
 
 Or [open the notebook in Colab](https://colab.research.google.com/github/mvxddd/garch-vol-surface/blob/main/notebooks/garch_iv_surface_colab.ipynb) — cell 1 installs the one
@@ -26,6 +28,67 @@ dependency Colab lacks and clones the package for you.
 Results below are from a live SPY run (2 Sep 2026): **4,417 raw quotes → 1,620
 clean implied vols across 12 expiries**, every smile calibrated
 arbitrage-free to within **0.04–0.35 vol points** of the market mid.
+
+---
+
+## Beyond a single snapshot
+
+The core study describes one surface on one day. Four modules build on it.
+
+### Portfolio risk — `volsurface/portfolio.py`
+
+Feed it positions (or a CSV) and it prices them on the calibrated surface,
+aggregates the Greeks, breaks vega down by tenor and by strike, and runs a
+spot/vol stress grid:
+
+```python
+from volsurface import portfolio as PF
+report = PF.risk_report(PF.Portfolio.from_csv("book.csv"), surface)
+```
+
+The stress grid is the point: a delta/vega summary cannot show gamma or vanna,
+and a short strangle looks harmless in a Greeks table right up until it isn't.
+How the smile moves with spot is an explicit choice — **sticky moneyness**
+(default, right for index options) or **sticky strike** — because the two give
+materially different P&L on a large move.
+
+### Surface history — `volsurface/history.py`
+
+`--snapshot` stores the day's surface on a fixed tenor grid (7/30/60/90/180/365
+days, so numbers stay comparable as listed expiries roll). Once enough days have
+accumulated, every metric is z-scored against **its own past**, and those
+historical extremes join the cross-sectional screen in one ranked list. Below 30
+snapshots it reports nothing rather than a meaningless z-score.
+
+### Backtest — `volsurface/backtest.py`
+
+A delta-hedged straddle harvesting the premium, with explicit transaction costs.
+On live SPY since 2015 (139 non-overlapping 21-day trades, 10k vega, 1 vol point
+round-trip cost):
+
+| Strategy | Sharpe | Hit rate | Max drawdown |
+|---|---:|---:|---:|
+| Always short vol | 0.47 | 78% | −976k |
+| Always long vol | −1.29 | 15% | −4.37M |
+| Short only when VRP is rich (z > 0.5) | **1.55** | 83% | **−155k** |
+
+The always-short curve is the classic short-vol shape: a steady grind up and a
+cliff in February 2020, where a single trade lost 15 average wins. Timing on the
+premium roughly triples the Sharpe and cuts the drawdown by 84% — which is the
+result that makes the VRP study worth doing.
+
+**What is deliberately not implemented:** backtesting individual strikes against
+today's chain. There is no history of option prices in the free data, so such a
+"backtest" would re-price the past with today's surface — a look-ahead that
+guarantees a beautiful equity curve. `signal_backtest` replays real snapshot
+history instead, and refuses to run on a store younger than 60 days.
+
+### Web interface — `app.py`
+
+`streamlit run app.py`: pick an underlying, press the button, and get all seven
+tabs — surface, forecast, premium, screen, portfolio risk, backtest, data — in
+either language. Nothing runs on page load (a surface build hits a rate-limited
+feed), and results are cached on the inputs.
 
 ---
 
@@ -189,6 +252,9 @@ garch-vol-surface/
 │   ├── i18n.py                 # en/ru string catalogue + t()
 │   ├── utils.py                # logging, retries, parquet cache, numerics
 │   ├── pipeline.py             # stage-isolated orchestration + PipelineResult
+│   ├── portfolio.py            # position risk, vega ladders, stress grids
+│   ├── history.py              # daily snapshot store + z-scores
+│   ├── backtest.py             # VRP harvesting with transaction costs
 │   ├── data/
 │   │   ├── prices.py           # OHLCV, returns, vol-index history
 │   │   ├── options.py          # chain retrieval, normalised to one schema
@@ -209,10 +275,12 @@ garch-vol-surface/
 ├── notebooks/
 │   ├── garch_iv_surface_colab.py     # source of truth (percent format)
 │   └── garch_iv_surface_colab.ipynb  # built artefact — open this in Colab
+├── app.py                      # Streamlit web interface
 ├── scripts/
 │   ├── run_pipeline.py         # CLI
+│   ├── build_dashboard.py      # figures + report → one HTML page
 │   └── build_notebook.py       # .py → .ipynb
-├── tests/                      # 40 tests
+├── tests/                      # 78 tests
 └── outputs/
     ├── figures/                # 15 PNG + 1 interactive HTML
     └── reports/                # 15 CSV tables + run_report.json
@@ -461,7 +529,7 @@ over 1,906 observations.
 
 ## 13. Final Deliverables
 
-- **`volsurface/`** — a layered, tested Python package (~5,400 lines) with
+- **`volsurface/`** — a layered, tested Python package (~7,000 lines) with
   production error handling and a synthetic fallback that makes every path
   runnable offline.
 - **A Colab notebook** — 40 cells, executes head-to-tail in ~2 minutes,
@@ -470,7 +538,7 @@ over 1,906 observations.
 - **15 figures** including an interactive 3-D surface.
 - **15 CSV tables + a JSON run report** capturing config, per-stage status and
   headline results — so any figure can be traced back to the run that made it.
-- **58 tests** covering parity, Greeks, inversion round-trips, arbitrage
+- **78 tests** covering parity, Greeks, inversion round-trips, arbitrage
   freedom, look-ahead bias, and graceful degradation when a feed dies.
 
 ## 14. Resume Description

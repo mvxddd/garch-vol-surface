@@ -127,6 +127,14 @@ class AnalyticsConfig:
     anomaly_z_threshold: float = 2.0
     vrp_lookback_days: int = 252
 
+    # Daily surface snapshots. Once enough have accumulated, every metric is
+    # also z-scored against its own past, which is a far stronger signal than
+    # comparing tenors against each other on a single day.
+    save_snapshot: bool = False
+    history_dir: Path = Path("outputs/history")
+    history_lookback_days: int = 252
+    history_min_observations: int = 30
+
 
 @dataclass
 class Config:

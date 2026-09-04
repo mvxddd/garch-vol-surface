@@ -44,6 +44,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-cache", action="store_true")
     p.add_argument("--no-fallback", action="store_true",
                    help="fail loudly instead of falling back to synthetic data")
+    p.add_argument("--snapshot", action="store_true",
+                   help="save today's surface to the history store and z-score "
+                        "it against its own past")
     p.add_argument("--lang", default="en", choices=list(LANGUAGES),
                    help="language for chart text and this summary")
     p.add_argument("--quiet", action="store_true")
@@ -67,6 +70,8 @@ def main(argv: list[str] | None = None) -> int:
     cfg.options.max_expiries = args.max_expiries
     cfg.options.risk_free_rate = args.rate
     cfg.surface.method = args.surface_method
+    cfg.analytics.save_snapshot = args.snapshot
+    cfg.analytics.history_dir = Path(args.out) / "history"
     cfg.output_dir = Path(args.out)
     cfg.figure_dir = Path(args.out) / "figures"
     cfg.report_dir = Path(args.out) / "reports"
@@ -88,6 +93,8 @@ def main(argv: list[str] | None = None) -> int:
         # non-English reader would otherwise trip.
         if isinstance(value, bool):
             value = t("cli.yes") if value else t("cli.no")
+        elif key == "n_snapshots":
+            value = f"{value}"
         elif key == "vrp_signal":
             value = t(f"vrp.signal.{value}")
         label = t(f"cli.{key}")

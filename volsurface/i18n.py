@@ -179,6 +179,45 @@ STRINGS: dict[str, dict[str, str]] = {
         "sev.medium": "MEDIUM",
         "sev.low": "LOW",
 
+        # -- portfolio risk --
+        "pf.ladder_title": "Vega ladder by {dim}",
+        "pf.ladder_subtitle": "a book can be flat total vega and still be long "
+                              "the front and short the back — that is what this "
+                              "shows · total {total:+,.0f} per vol point",
+        "pf.dim_tenor": "maturity",
+        "pf.dim_strike": "moneyness",
+        "pf.axis_vega": "vega per vol point",
+        "pf.stress_title": "Stress grid: P&L by spot and volatility shock",
+        "pf.stress_subtitle": "captures gamma and vanna, which a delta/vega "
+                              "summary cannot · smile follows spot: {sticky}",
+        "pf.axis_spot_shock": "spot shock",
+        "pf.axis_vol_shock": "volatility shock (vol points)",
+        "pf.sticky_moneyness": "sticky moneyness",
+        "pf.sticky_strike": "sticky strike",
+        "pf.no_positions": "No option positions to show",
+        "pf.sticky_label": "how the smile follows spot",
+        "pf.delta_shares": "delta (shares)",
+        "pf.vega_per_vol_point": "vega per vol point",
+        "pf.theta_per_day": "theta per day",
+        "pf.value": "book value",
+
+        # -- backtest --
+        "bt.equity_title": "Equity curve: {strategy}",
+        "bt.equity_subtitle": "{n} non-overlapping trades · Sharpe {sharpe:.2f} · "
+                              "hit rate {hit:.0f}% · costs took {cost:.0f}% of gross",
+        "bt.axis_pnl": "cumulative P&L",
+        "bt.axis_trade_pnl": "P&L per trade",
+        "bt.drawdown": "drawdown",
+        "bt.dist_title": "Distribution of trade P&L",
+        "bt.dist_subtitle": "the shape that matters: many small wins, few very "
+                            "large losses · worst trade equals {ratio:.0f} average wins",
+        "bt.compare_title": "Does timing the premium beat always being short?",
+        "bt.compare_subtitle": "same costs and holding period throughout · "
+                               "higher is better",
+        "bt.axis_sharpe": "annualised Sharpe",
+        "bt.axis_n_trades": "number of trades",
+        "bt.bar_label": "  {sharpe:+.2f}  ({n} trades)",
+
         # -- CLI --
         "cli.header": "{ticker} — volatility study",
         "cli.stage_ok": "OK  ",
@@ -200,6 +239,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "cli.vrp_vol_points": "vol risk premium (vp)",
         "cli.vrp_signal": "signal",
         "cli.n_anomalies": "anomalies flagged",
+        "cli.n_snapshots": "snapshots in history",
         "cli.yes": "yes",
         "cli.no": "no",
     },
@@ -347,6 +387,49 @@ STRINGS: dict[str, dict[str, str]] = {
         "sev.medium": "СРЕДНЯЯ",
         "sev.low": "НИЗКАЯ",
 
+        # -- портфельный риск --
+        "pf.ladder_title": "Вега-лестница по {dim}",
+        "pf.ladder_subtitle": "книга может иметь нулевую суммарную вегу и при "
+                              "этом быть в лонге по ближнему сроку и в шорте по "
+                              "дальнему — именно это здесь видно · итого "
+                              "{total:+,.0f} на пункт волатильности",
+        "pf.dim_tenor": "срокам",
+        "pf.dim_strike": "манинес",
+        "pf.axis_vega": "вега на пункт волатильности",
+        "pf.stress_title": "Стресс-сетка: P&L по шоку спота и волатильности",
+        "pf.stress_subtitle": "показывает гамму и ванну, которых не видно в "
+                              "сводке по дельте и веге · улыбка следует за "
+                              "спотом: {sticky}",
+        "pf.axis_spot_shock": "шок спота",
+        "pf.axis_vol_shock": "шок волатильности (пункты)",
+        "pf.sticky_moneyness": "липкий манинес",
+        "pf.sticky_strike": "липкий страйк",
+        "pf.no_positions": "Опционных позиций нет",
+        "pf.sticky_label": "как улыбка следует за спотом",
+        "pf.delta_shares": "дельта (в акциях)",
+        "pf.vega_per_vol_point": "вега на пункт волатильности",
+        "pf.theta_per_day": "тета в день",
+        "pf.value": "стоимость книги",
+
+        # -- бэктест --
+        "bt.equity_title": "Кривая капитала: {strategy}",
+        "bt.equity_subtitle": "{n} непересекающихся сделок · Sharpe {sharpe:.2f} · "
+                              "доля прибыльных {hit:.0f}% · издержки съели {cost:.0f}% "
+                              "валовой прибыли",
+        "bt.axis_pnl": "накопленный P&L",
+        "bt.axis_trade_pnl": "P&L на сделку",
+        "bt.drawdown": "просадка",
+        "bt.dist_title": "Распределение P&L по сделкам",
+        "bt.dist_subtitle": "важна именно форма: много мелких выигрышей и редкие "
+                            "очень крупные убытки · худшая сделка равна {ratio:.0f} "
+                            "средним выигрышам",
+        "bt.compare_title": "Даёт ли тайминг премии больше, чем постоянный шорт?",
+        "bt.compare_subtitle": "издержки и срок удержания одинаковые везде · "
+                               "больше — лучше",
+        "bt.axis_sharpe": "Sharpe, годовой",
+        "bt.axis_n_trades": "число сделок",
+        "bt.bar_label": "  {sharpe:+.2f}  ({n} сделок)",
+
         # -- CLI --
         "cli.header": "{ticker} — исследование волатильности",
         "cli.stage_ok": "OK  ",
@@ -368,6 +451,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "cli.vrp_vol_points": "премия за риск (п.в.)",
         "cli.vrp_signal": "сигнал",
         "cli.n_anomalies": "найдено аномалий",
+        "cli.n_snapshots": "снимков в истории",
         "cli.yes": "да",
         "cli.no": "нет",
     },

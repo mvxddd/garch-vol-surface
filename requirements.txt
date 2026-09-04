@@ -16,5 +16,8 @@ pyarrow>=14.0        # parquet cache
 matplotlib>=3.8
 plotly>=5.18         # interactive 3-D surface
 
+# Web interface (optional — only needed for `streamlit run app.py`)
+streamlit>=1.30
+
 # Development (optional)
 pytest>=7.4

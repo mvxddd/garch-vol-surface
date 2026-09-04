@@ -24,6 +24,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7.4"]
+app = ["streamlit>=1.30"]
 
 [project.scripts]
 volsurface = "scripts.run_pipeline:main"

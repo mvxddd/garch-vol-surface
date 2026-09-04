@@ -77,7 +77,12 @@ def test_pipeline_runs_end_to_end(tmp_path):
     res = run_pipeline(cfg, make_figures=False)
 
     assert res.status["load_prices"] == "ok"
-    assert all(v == "ok" for k, v in res.status.items() if k != "figures"), res.errors
+    # Assert nothing *failed*, rather than that everything ran: optional stages
+    # (figures, the snapshot store) report "skipped" when switched off, and a
+    # strict equality check here breaks every time an optional stage is added.
+    assert not [k for k, v in res.status.items() if v == "failed"], res.errors
+    assert res.status["build_surface"] == "ok"
+    assert res.status["anomaly_screen"] == "ok"
     head = res.headline()
     assert head["n_expiries"] >= 5
     assert 0.01 < head["atm_30d_iv"] < 2.0
