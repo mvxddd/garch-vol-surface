@@ -26,6 +26,7 @@ NOT_TRANSLATABLE = {
     "term.lbl_garch",      # "GARCH"
     "skew.lbl_rr",         # "risk reversal" — said in English on a Russian desk
     "anom.z",              # "z = ..." — a statistical symbol
+    "axis.log_moneyness_short",   # "log(K/F)" — a formula, not prose
     "cli.stage_ok",        # "OK"
 }
 
@@ -193,3 +194,23 @@ def test_vrp_signal_is_a_stable_code_not_prose():
     assert "рынок дороже" in vrp_signal_text("rich")
     i18n.set_language("en")
     assert "rich" in vrp_signal_text("rich")
+
+
+def test_config_language_applies_without_rendering_figures():
+    """
+    Regression: cfg.language used to be applied only inside the figure step, so
+    a caller who set it and passed make_figures=False silently got English
+    charts when he plotted them himself.
+    """
+    from volsurface import Config, run_pipeline
+
+    cfg = Config()
+    cfg.data.provider = "synthetic"
+    cfg.data.use_cache = False
+    cfg.data.start = "2022-01-01"
+    cfg.language = "ru"
+    cfg.garch.specs = (("GARCH(1,1)-t", "Garch", 1, 0, 1, "t"),)
+
+    run_pipeline(cfg, make_figures=False, run_walk_forward=False)
+    assert i18n.get_language() == "ru"
+    assert i18n.t("surface.title").startswith("Поверхность")

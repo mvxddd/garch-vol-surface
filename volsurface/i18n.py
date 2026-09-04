@@ -51,7 +51,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "axis.density": "density",
         "axis.quotes": "quotes",
         "axis.per_log_moneyness": "per unit log-moneyness",
-        "axis.forecast_horizon": "forecast horizon",
+        # Short form for small-multiple panels, where the full label does not fit.
+        "axis.log_moneyness_short": "log(K/F)",
         "unit.days_suffix": "d",
         "label.market_quotes": "market quotes",
         "label.forward_atm": "forward ATM",
@@ -216,7 +217,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "axis.density": "плотность",
         "axis.quotes": "котировки",
         "axis.per_log_moneyness": "на единицу лог-манинес",
-        "axis.forecast_horizon": "горизонт прогноза",
+        # Короткая форма для мелких панелей, где полная подпись не помещается.
+        "axis.log_moneyness_short": "log(K/F)",
         "unit.days_suffix": "д",
         "label.market_quotes": "котировки рынка",
         "label.forward_atm": "ATM по форварду",

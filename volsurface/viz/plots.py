@@ -20,7 +20,6 @@ that are applied consistently rather than re-decided per chart:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Sequence
 
 import numpy as np
 import pandas as pd
@@ -281,7 +280,8 @@ def plot_smile_grid(surface, max_panels: int = 12, path: str | Path | None = Non
         if i % ncols == 0:
             ax.set_ylabel(t("axis.iv_pct_short"), color=th.ink_secondary, fontsize=9)
         if i // ncols == nrows - 1:
-            ax.set_xlabel("log(K/F)", color=th.ink_secondary, fontsize=9)  # symbol
+            ax.set_xlabel(t("axis.log_moneyness_short"),
+                          color=th.ink_secondary, fontsize=9)
 
     for j in range(n, nrows * ncols):
         axes[j // ncols][j % ncols].axis("off")

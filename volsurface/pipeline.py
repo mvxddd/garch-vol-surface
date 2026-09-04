@@ -25,6 +25,7 @@ from .analytics import vrp as VRP
 from .config import Config
 from .data import load_option_chain, load_prices, prepare_quotes
 from .data.prices import compute_returns, load_vol_index, synthetic_vol_index
+from .i18n import set_language
 from .models import garch as G
 from .models.surface import build_surface
 from .utils import get_logger, timer
@@ -173,6 +174,11 @@ def run_pipeline(cfg: Config | None = None, make_figures: bool = True,
     """
     cfg = cfg or Config()
     cfg.ensure_dirs()
+    # Apply the display language up front, not just before rendering: a caller
+    # who sets cfg.language and then builds charts himself (make_figures=False)
+    # must still get his language, and the CLI summary is printed after this
+    # returns.
+    set_language(cfg.language)
     res = PipelineResult(config=cfg)
 
     # ------------------------------------------------------------------ #
@@ -308,10 +314,9 @@ def make_all_figures(res: PipelineResult) -> dict[str, str]:
     import matplotlib.pyplot as plt
 
     from . import viz
-    from .i18n import set_language
     from .viz import plots as P
 
-    set_language(res.config.language)
+    set_language(res.config.language)   # also correct when called standalone
     viz.use_theme("light")
     out_dir = Path(res.config.figure_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

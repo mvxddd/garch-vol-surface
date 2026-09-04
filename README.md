@@ -17,7 +17,7 @@ pip install -r requirements.txt
 python scripts/run_pipeline.py --ticker SPY          # full study, ~2 minutes
 python scripts/run_pipeline.py --provider synthetic  # no network required
 python scripts/run_pipeline.py --lang ru             # charts and CLI in Russian
-pytest -q                                            # 57 tests, ~8 seconds
+pytest -q                                            # 58 tests, ~9 seconds
 ```
 
 Or [open the notebook in Colab](https://colab.research.google.com/github/mvxddd/garch-vol-surface/blob/main/notebooks/garch_iv_surface_colab.ipynb) — cell 1 installs the one
@@ -470,7 +470,7 @@ over 1,906 observations.
 - **15 figures** including an interactive 3-D surface.
 - **15 CSV tables + a JSON run report** capturing config, per-stage status and
   headline results — so any figure can be traced back to the run that made it.
-- **57 tests** covering parity, Greeks, inversion round-trips, arbitrage
+- **58 tests** covering parity, Greeks, inversion round-trips, arbitrage
   freedom, look-ahead bias, and graceful degradation when a feed dies.
 
 ## 14. Resume Description

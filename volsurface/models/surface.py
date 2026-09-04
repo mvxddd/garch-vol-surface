@@ -24,7 +24,6 @@ import pandas as pd
 
 from ..config import CALENDAR_DAYS, SurfaceConfig
 from ..utils import get_logger
-from .black_scholes import greeks
 from .svi import SVIParams, check_calendar_arbitrage, fit_svi
 
 LOG = get_logger("volsurface.surface")
