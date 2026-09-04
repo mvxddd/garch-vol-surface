@@ -85,20 +85,32 @@ def current_vrp(surface, garch_term_structure: pd.DataFrame,
 def _vrp_signal(atm_iv: float, garch_vol: float, rich: float = 1.15,
                 cheap: float = 0.95) -> str:
     """
-    Map the implied/forecast ratio to a desk-language verdict.
+    Map the implied/forecast ratio to a verdict **code**.
+
+    Returns one of "rich", "cheap", "in_line", "na". A stable code rather than
+    a sentence, for two reasons: it survives translation (the display layer
+    renders it in the user's language), and it is what a downstream script
+    wants to filter on. `vrp_signal_text` turns it into prose.
 
     Thresholds are deliberately asymmetric: a positive VRP is the *normal*
     state, so it takes a large premium to call options genuinely rich, but only
     a small discount to call them cheap.
     """
     if not (np.isfinite(atm_iv) and np.isfinite(garch_vol) and garch_vol > 0):
-        return "n/a"
+        return "na"
     ratio = atm_iv / garch_vol
     if ratio >= rich:
-        return "implied rich vs model (short-vol bias)"
+        return "rich"
     if ratio <= cheap:
-        return "implied cheap vs model (long-vol bias)"
-    return "in line"
+        return "cheap"
+    return "in_line"
+
+
+def vrp_signal_text(code: str) -> str:
+    """Render a signal code as prose in the active display language."""
+    from ..i18n import t
+
+    return t(f"vrp.signal.{code}")
 
 
 def historical_vrp(iv_proxy: pd.Series, returns: pd.Series,

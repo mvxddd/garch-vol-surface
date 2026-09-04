@@ -19,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from volsurface import Config, run_pipeline                     # noqa: E402
+from volsurface.i18n import LANGUAGES, set_language, t           # noqa: E402
 from volsurface.utils import get_logger                          # noqa: E402
 
 
@@ -43,6 +44,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-cache", action="store_true")
     p.add_argument("--no-fallback", action="store_true",
                    help="fail loudly instead of falling back to synthetic data")
+    p.add_argument("--lang", default="en", choices=list(LANGUAGES),
+                   help="language for chart text and this summary")
     p.add_argument("--quiet", action="store_true")
     return p
 
@@ -53,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
 
     cfg = Config()
     cfg.verbose = not args.quiet
+    cfg.language = args.lang
+    set_language(args.lang)
     cfg.data.ticker = args.ticker
     cfg.data.start = args.start
     cfg.data.end = args.end
@@ -74,17 +79,26 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     res.save()
-    print("\n" + "=" * 66)
-    print(f"  {cfg.data.ticker} — volatility study")
-    print("=" * 66)
-    for k, v in res.headline().items():
-        print(f"  {k:<22} {v}")
-    print("-" * 66)
+    print("\n" + "=" * 70)
+    print("  " + t("cli.header", ticker=cfg.data.ticker))
+    print("=" * 70)
+    for key, value in res.headline().items():
+        # Field names are translated; the values stay as computed. Booleans read
+        # as words rather than Python literals, which is the one place a
+        # non-English reader would otherwise trip.
+        if isinstance(value, bool):
+            value = t("cli.yes") if value else t("cli.no")
+        elif key == "vrp_signal":
+            value = t(f"vrp.signal.{value}")
+        label = t(f"cli.{key}")
+        print(f"  {label:<28} {value}")
+    print("-" * 70)
+    marks = {"ok": t("cli.stage_ok"), "failed": t("cli.stage_fail"),
+             "skipped": t("cli.stage_skip")}
     for stage, state in res.status.items():
-        mark = {"ok": "OK  ", "failed": "FAIL", "skipped": "SKIP"}.get(state, "?   ")
-        print(f"  [{mark}] {stage}"
+        print(f"  [{marks.get(state, '?   ')}] {stage}"
               + (f"  — {res.errors[stage]}" if stage in res.errors else ""))
-    print("=" * 66)
+    print("=" * 70)
     return 1 if any(v == "failed" for v in res.status.values()) else 0
 
 

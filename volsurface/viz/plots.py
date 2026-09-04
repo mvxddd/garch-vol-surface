@@ -26,6 +26,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import CALENDAR_DAYS
+from ..i18n import t
 from ..utils import get_logger
 from . import theme as TH
 
@@ -98,13 +99,13 @@ def plot_surface_3d(surface, n_k: int = 61, n_t: int = 41,
     fig.add_trace(go.Surface(
         x=k_grid, y=days, z=iv * 100,
         colorscale=TH.plotly_colorscale(),
-        colorbar={"title": {"text": "IV (%)", "side": "right"}, "thickness": 14,
+        colorbar={"title": {"text": t("surface.colorbar"), "side": "right"},
+                  "thickness": 14,
                   "len": 0.62, "outlinewidth": 0},
         contours={"z": {"show": True, "usecolormap": True, "project_z": False,
                         "width": 1}},
-        hovertemplate=("log-moneyness %{x:.3f}<br>%{y:.0f} days"
-                       "<br><b>IV %{z:.2f}%</b><extra></extra>"),
-        name="fitted surface", showscale=True, opacity=0.96,
+        hovertemplate=t("surface.hover"),
+        name=t("surface.trace_fitted"), showscale=True, opacity=0.96,
     ))
 
     if show_quotes and surface.quotes is not None and not surface.quotes.empty:
@@ -113,7 +114,7 @@ def plot_surface_3d(surface, n_k: int = 61, n_t: int = 41,
             x=q["k"], y=q["T"] * CALENDAR_DAYS, z=q["iv"] * 100,
             mode="markers",
             marker={"size": 2.2, "color": th.ink_secondary, "opacity": 0.55},
-            name="market quotes",
+            name=t("label.market_quotes"),
             hovertemplate=("K %{customdata[0]:.1f} · %{customdata[1]}"
                            "<br>IV %{z:.2f}%<extra></extra>"),
             customdata=np.stack([q["strike"], q["option_type"]], axis=-1),
@@ -121,18 +122,18 @@ def plot_surface_3d(surface, n_k: int = 61, n_t: int = 41,
 
     asof = pd.Timestamp(surface.asof).date()
     layout = TH.plotly_layout(
-        f"Implied volatility surface · {asof}",
-        f"{len(surface.slices)} calibrated expiries ({surface.method.upper()}) · "
-        f"forward-ATM at log-moneyness 0 · drag to rotate",
+        t("surface.title_dated", asof=asof),
+        t("surface.subtitle_3d", n=len(surface.slices),
+          method=surface.method.upper()),
     )
     layout["scene"] = {
-        "xaxis": {"title": "log-moneyness  log(K/F)", "gridcolor": th.grid,
+        "xaxis": {"title": t("axis.log_moneyness"), "gridcolor": th.grid,
                   "backgroundcolor": th.surface, "showbackground": True,
                   "zerolinecolor": th.axis},
-        "yaxis": {"title": "days to expiry", "gridcolor": th.grid,
+        "yaxis": {"title": t("axis.days_to_expiry"), "gridcolor": th.grid,
                   "backgroundcolor": th.surface, "showbackground": True,
                   "zerolinecolor": th.axis},
-        "zaxis": {"title": "implied vol (%)", "gridcolor": th.grid,
+        "zaxis": {"title": t("axis.implied_vol_pct"), "gridcolor": th.grid,
                   "backgroundcolor": th.surface, "showbackground": True,
                   "zerolinecolor": th.axis},
         "camera": {"eye": {"x": 1.65, "y": -1.5, "z": 0.75}},
@@ -208,23 +209,22 @@ def plot_surface_heatmap(surface, n_k: int = 121, n_t: int = 81,
     if surface.quotes is not None and not surface.quotes.empty:
         q = surface.quotes
         ax.scatter(q["k"], q["T"] * CALENDAR_DAYS, s=5, c=th.surface,
-                   edgecolors="none", alpha=0.55, zorder=5, label="market quotes")
+                   edgecolors="none", alpha=0.55, zorder=5,
+                   label=t("label.market_quotes"))
         ax.legend(loc="upper right", labelcolor=th.ink_secondary)
 
     ax.axvline(0.0, color=th.surface, lw=1.0, ls="--", alpha=0.8, zorder=6)
-    ax.text(0.002, days.max(), " forward ATM", color=th.surface, fontsize=8.5,
-            va="top", ha="left", zorder=6)
+    ax.text(0.002, days.max(), " " + t("label.forward_atm"), color=th.surface,
+            fontsize=8.5, va="top", ha="left", zorder=6)
     ax.set_xlim(k_grid.min(), k_grid.max())
     ax.set_ylim(days.min(), days.max())
     cbar = fig.colorbar(mesh, ax=ax, pad=0.015)
-    cbar.set_label("implied vol (%)", color=th.ink_secondary, fontsize=9.5)
+    cbar.set_label(t("axis.implied_vol_pct"), color=th.ink_secondary, fontsize=9.5)
     cbar.outline.set_visible(False)
     ax.grid(False)
-    _titles(ax, "Implied volatility surface",
-            f"{pd.Timestamp(surface.asof).date()} · dots are the quotes the surface "
-            f"was fitted to · blank corners are strikes the market does not list "
-            f"at that tenor",
-            ylabel="days to expiry", xlabel="log-moneyness  log(K/F)")
+    _titles(ax, t("surface.title"),
+            t("surface.subtitle_heat", asof=pd.Timestamp(surface.asof).date()),
+            ylabel=t("axis.days_to_expiry"), xlabel=t("axis.log_moneyness"))
     return _save(fig, path)
 
 
@@ -264,33 +264,34 @@ def plot_smile_grid(surface, max_panels: int = 12, path: str | Path | None = Non
             ax.vlines(sub["k"][ok], lo[ok], hi[ok], color=th.axis, lw=1.6,
                       alpha=0.9, zorder=1)
         ax.scatter(sub["k"], sub["iv"] * 100, s=11, color=th.ink_secondary,
-                   zorder=2, label="market mid")
+                   zorder=2, label=t("smile.market_mid"))
         ax.plot(k_fit, iv_fit, color=th.categorical[0], lw=2.0, zorder=3,
-                label="fitted smile")
+                label=t("smile.fitted"))
         ax.axvline(0, color=th.axis, lw=0.8, ls=":")
 
         rmse = getattr(sl, "rmse_vol", np.nan)
-        ax.set_title(f"{int(round(sl.T * CALENDAR_DAYS))}d   "
-                     f"ATM {float(sl.implied_vol(0.0))*100:.1f}%",
+        ax.set_title(t("smile.panel_title",
+                       days=int(round(sl.T * CALENDAR_DAYS)),
+                       atm=float(sl.implied_vol(0.0)) * 100),
                      loc="left", fontsize=10, color=th.ink, fontweight="bold")
-        ax.text(0.98, 0.94, f"fit RMSE {rmse*100:.2f} vp\n{len(sub)} quotes",
+        ax.text(0.98, 0.94, t("smile.fit_rmse", rmse=rmse * 100, n=len(sub)),
                 transform=ax.transAxes, ha="right", va="top", fontsize=7.6,
                 color=th.ink_muted)
         ax.tick_params(labelsize=8)
         if i % ncols == 0:
-            ax.set_ylabel("IV (%)", color=th.ink_secondary, fontsize=9)
+            ax.set_ylabel(t("axis.iv_pct_short"), color=th.ink_secondary, fontsize=9)
         if i // ncols == nrows - 1:
-            ax.set_xlabel("log(K/F)", color=th.ink_secondary, fontsize=9)
+            ax.set_xlabel("log(K/F)", color=th.ink_secondary, fontsize=9)  # symbol
 
     for j in range(n, nrows * ncols):
         axes[j // ncols][j % ncols].axis("off")
 
     handles, labels = axes[0][0].get_legend_handles_labels()
     fig.legend(handles + [plt.Line2D([], [], color=th.axis, lw=1.6)],
-               labels + ["bid/ask in vol"], loc="upper right",
+               labels + [t("smile.bidask")], loc="upper right",
                bbox_to_anchor=(0.995, 1.0), ncol=3, frameon=False,
                fontsize=9, labelcolor=th.ink_secondary)
-    fig.suptitle("Volatility smile by expiry: market quotes vs calibrated fit",
+    fig.suptitle(t("smile.grid_title"),
                  x=0.008, y=1.015, ha="left", fontsize=13, fontweight="bold",
                  color=th.ink)
     fig.tight_layout()
@@ -317,15 +318,14 @@ def plot_smile_overlay(surface, n_tenors: int = 5, path: str | Path | None = Non
     for T, c in zip(pick, colors):
         iv = np.asarray(surface.iv(k, float(T))) * 100
         ax.plot(k, iv, color=c, lw=2.0)
-        _label_line_end(ax, k, iv, f"{int(round(float(T)*CALENDAR_DAYS))}d", c)
+        _label_line_end(ax, k, iv, f"{int(round(float(T)*CALENDAR_DAYS))}"
+                        + t("unit.days_suffix"), c)
 
     ax.axvline(0, color=th.axis, lw=0.9, ls=":")
-    ax.text(0.004, ax.get_ylim()[1], "forward ATM", color=th.ink_muted,
+    ax.text(0.004, ax.get_ylim()[1], t("label.forward_atm"), color=th.ink_muted,
             fontsize=8.5, va="top")
-    _titles(ax, "Volatility smile across the term structure",
-            "shaded light to dark by maturity · the downward slope to the left "
-            "is the equity crash skew",
-            ylabel="implied vol (%)", xlabel="log-moneyness  log(K/F)")
+    _titles(ax, t("smile.overlay_title"), t("smile.overlay_subtitle"),
+            ylabel=t("axis.implied_vol_pct"), xlabel=t("axis.log_moneyness"))
     ax.set_xlim(k.min() - 0.01, k.max() + 0.045)        # room for direct labels
     fig.tight_layout()
     return _save(fig, path)
@@ -350,23 +350,23 @@ def plot_term_structure(term_df: pd.DataFrame, garch_ts: pd.DataFrame | None = N
     x = term_df["days"].to_numpy()
 
     ax.plot(x, term_df["atm_iv"] * 100, color=th.categorical[0], lw=2.2,
-            marker="o", ms=5, label="ATM implied vol")
-    _label_line_end(ax, x, term_df["atm_iv"].to_numpy() * 100, "implied",
-                    th.categorical[0])
+            marker="o", ms=5, label=t("term.atm_implied"))
+    _label_line_end(ax, x, term_df["atm_iv"].to_numpy() * 100,
+                    t("term.lbl_implied"), th.categorical[0])
 
     if "fwd_vol" in term_df:
         fv = term_df["fwd_vol"].to_numpy() * 100
         ok = np.isfinite(fv)
         ax.plot(x[ok], fv[ok], color=th.categorical[1], lw=1.8, ls="--",
-                marker="s", ms=4, label="implied forward vol (between tenors)")
-        _label_line_end(ax, x[ok], fv[ok], "forward", th.categorical[1])
+                marker="s", ms=4, label=t("term.fwd_vol"))
+        _label_line_end(ax, x[ok], fv[ok], t("term.lbl_forward"), th.categorical[1])
 
     if garch_ts is not None and not garch_ts.empty:
         gx = garch_ts["horizon_days"].to_numpy() / 252 * CALENDAR_DAYS
         gy = garch_ts["garch_vol_ann"].to_numpy() * 100
         ax.plot(gx, gy, color=th.categorical[2], lw=2.0, marker="^", ms=5,
-                label="GARCH forecast vol")
-        _label_line_end(ax, gx, gy, "GARCH", th.categorical[2])
+                label=t("term.garch"))
+        _label_line_end(ax, gx, gy, t("term.lbl_garch"), th.categorical[2])
         # Shade the premium the market is charging over the model.
         common = np.linspace(max(x.min(), gx.min()), min(x.max(), gx.max()), 100)
         iv_i = np.interp(common, x, term_df["atm_iv"].to_numpy() * 100)
@@ -378,13 +378,12 @@ def plot_term_structure(term_df: pd.DataFrame, garch_ts: pd.DataFrame | None = N
 
     ax.set_xscale("log")
     ax.set_xticks(x)
-    ax.set_xticklabels([f"{int(v)}d" for v in x], fontsize=9)
+    ax.set_xticklabels([f"{int(v)}{t('unit.days_suffix')}" for v in x], fontsize=9)
     ax.minorticks_off()
     ax.legend(loc="upper left", ncol=1)
     ax.set_xlim(right=ax.get_xlim()[1] * 1.28)          # room for direct labels
-    _titles(ax, "Volatility term structure: market vs model",
-            "shaded band = volatility risk premium (implied above model)",
-            ylabel="annualised vol (%)", xlabel="tenor")
+    _titles(ax, t("term.title"), t("term.subtitle"),
+            ylabel=t("axis.ann_vol_pct"), xlabel=t("axis.tenor"))
     fig.tight_layout()
     return _save(fig, path)
 
@@ -405,32 +404,29 @@ def plot_skew_term(skew_df: pd.DataFrame, path: str | Path | None = None):
 
     ax = axes[0]
     ax.plot(x, skew_df["risk_reversal"], color=th.categorical[0], lw=2.2,
-            marker="o", ms=5, label="25Δ risk reversal (put − call)")
-    _label_line_end(ax, x, skew_df["risk_reversal"].to_numpy(), "risk reversal",
+            marker="o", ms=5, label=t("skew.rr"))
+    _label_line_end(ax, x, skew_df["risk_reversal"].to_numpy(), t("skew.lbl_rr"),
                     th.categorical[0])
     ax.plot(x, skew_df["butterfly"], color=th.categorical[1], lw=2.0, ls="--",
-            marker="s", ms=4.5, label="25Δ butterfly (wings − ATM)")
-    _label_line_end(ax, x, skew_df["butterfly"].to_numpy(), "butterfly",
+            marker="s", ms=4.5, label=t("skew.bf"))
+    _label_line_end(ax, x, skew_df["butterfly"].to_numpy(), t("skew.lbl_bf"),
                     th.categorical[1])
     ax.axhline(0, color=th.axis, lw=0.9)
     ax.legend(loc="center left", ncol=1)
-    _titles(ax, "Skew and convexity by tenor",
-            "positive risk reversal = puts bid over calls, the equity crash skew",
-            ylabel="vol points")
+    _titles(ax, t("skew.title"), t("skew.subtitle"), ylabel=t("axis.vol_points"))
 
     ax = axes[1]
     ax.plot(x, skew_df["atm_skew"], color=th.categorical[2], lw=2.2, marker="D",
             ms=4.5)
-    _label_line_end(ax, x, skew_df["atm_skew"].to_numpy(), "ATM slope",
+    _label_line_end(ax, x, skew_df["atm_skew"].to_numpy(), t("skew.lbl_atm"),
                     th.categorical[2])
     ax.axhline(0, color=th.axis, lw=0.9)
-    _titles(ax, "ATM skew  ∂IV/∂log(K/F)",
-            "flattens with maturity — the standard 1/√T decay",
-            ylabel="per unit log-moneyness", xlabel="days to expiry")
+    _titles(ax, t("skew.atm_title"), t("skew.atm_subtitle"),
+            ylabel=t("axis.per_log_moneyness"), xlabel=t("axis.days_to_expiry"))
     for a in axes:
         a.set_xscale("log")
         a.set_xticks(x)
-        a.set_xticklabels([f"{int(v)}d" for v in x], fontsize=9)
+        a.set_xticklabels([f"{int(v)}{t('unit.days_suffix')}" for v in x], fontsize=9)
         a.minorticks_off()
         a.set_xlim(x.min() * 0.88, x.max() * 1.30)      # room for direct labels
     fig.tight_layout()
@@ -462,13 +458,12 @@ def plot_risk_neutral_density(surface, n_tenors: int = 5,
     for sl, c in zip(pick, colors):
         d = np.asarray(sl.risk_neutral_density(k))
         ax.plot(k, d, color=c, lw=2.0)
-        _label_line_end(ax, k, d, f"{int(round(sl.T * CALENDAR_DAYS))}d", c)
+        _label_line_end(ax, k, d, f"{int(round(sl.T * CALENDAR_DAYS))}"
+                        + t("unit.days_suffix"), c)
     ax.axhline(0, color=th.axis, lw=1.0)
     ax.axvline(0, color=th.axis, lw=0.9, ls=":")
-    _titles(ax, "Implied risk-neutral density by tenor",
-            "any excursion below zero would be a butterfly arbitrage · "
-            "the fat left tail is the skew in probability space",
-            ylabel="density", xlabel="log-moneyness  log(K/F)")
+    _titles(ax, t("density.title"), t("density.subtitle"),
+            ylabel=t("axis.density"), xlabel=t("axis.log_moneyness"))
     ax.margins(x=0.05)
     fig.tight_layout()
     return _save(fig, path)
@@ -504,27 +499,26 @@ def plot_conditional_vol(returns: pd.Series, fit, realized_window: int = 21,
     ax = axes[0]
     ax.axhline(0, color=th.axis, lw=0.8)
     ax.plot(returns.index, returns * 100, color=th.ink_muted, lw=0.5, alpha=0.9)
-    _titles(ax, "Daily log returns",
-            "volatility clustering — calm and violent periods arrive in runs",
-            ylabel="return (%)")
+    _titles(ax, t("garch.returns_title"), t("garch.returns_subtitle"),
+            ylabel=t("axis.return_pct"))
     ax.grid(axis="y")
 
     ax = axes[1]
     ax.plot(rv.index, rv * 100, color=th.ink_muted, lw=1.2,
-            label=f"realised vol ({realized_window}d trailing)")
+            label=t("garch.realized", window=realized_window))
     ax.plot(cond.index, cond * 100, color=th.categorical[0], lw=1.6,
-            label=f"{fit.name} conditional vol")
+            label=t("garch.conditional", model=fit.name))
     ax.axhline(fit.long_run_vol * 100, color=th.categorical[1], lw=1.4, ls="--",
-               label=f"long-run vol {fit.long_run_vol*100:.1f}%")
+               label=t("garch.long_run", vol=fit.long_run_vol * 100))
     if oos_start is not None:
         ax.axvline(oos_start, color=th.axis, lw=1.2, ls=":")
-        ax.text(oos_start, ax.get_ylim()[1], "  out-of-sample from here",
+        ax.text(oos_start, ax.get_ylim()[1], t("garch.oos_marker"),
                 fontsize=8.5, color=th.ink_muted, va="top", ha="left")
     ax.legend(loc="upper left", ncol=3)
-    _titles(ax, "Conditional volatility vs realised",
-            f"persistence {fit.persistence:.3f} — shocks decay with a half-life of "
-            f"{np.log(0.5)/np.log(max(fit.persistence, 1e-9)):.0f} days",
-            ylabel="annualised vol (%)")
+    _titles(ax, t("garch.cond_title"),
+            t("garch.cond_subtitle", persistence=fit.persistence,
+              halflife=np.log(0.5) / np.log(max(fit.persistence, 1e-9))),
+            ylabel=t("axis.ann_vol_pct"))
     fig.tight_layout()
     return _save(fig, path)
 
@@ -552,16 +546,16 @@ def plot_forecast_vs_realized(walk_forward: pd.DataFrame, model: str | None = No
         ax = axes[i][0]
         sub = df[df["horizon"] == h].sort_values("date")
         ax.plot(sub["date"], sub["realized_vol"] * 100, color=th.ink_muted,
-                lw=1.3, label="realised (next %dd)" % h)
+                lw=1.3, label=t("garch.realized_next", h=h))
         ax.plot(sub["date"], sub["forecast_vol"] * 100, color=th.categorical[0],
-                lw=1.7, label="forecast")
+                lw=1.7, label=t("garch.forecast"))
         corr = sub[["forecast_vol", "realized_vol"]].corr().iloc[0, 1]
-        ax.text(0.995, 0.93, f"corr {corr:.2f}", transform=ax.transAxes,
+        ax.text(0.995, 0.93, t("garch.corr", corr=corr), transform=ax.transAxes,
                 ha="right", va="top", fontsize=9, color=th.ink_muted)
-        _titles(ax, f"{h}-day horizon", ylabel="ann. vol (%)")
+        _titles(ax, t("garch.horizon_panel", h=h), ylabel=t("axis.ann_vol_pct"))
         if i == 0:
             ax.legend(loc="upper left", ncol=2)
-    fig.suptitle(f"Out-of-sample volatility forecast vs realised · {model}",
+    fig.suptitle(t("garch.oos_title", model=model),
                  x=0.008, y=1.005, ha="left", fontsize=13, fontweight="bold",
                  color=th.ink)
     fig.tight_layout()
@@ -619,23 +613,21 @@ def plot_model_scorecard(eval_df: pd.DataFrame, metric: str = "qlike",
         log_scale = bool(pos.size and pos.max() / max(pos.min(), 1e-12) > 100)
         if log_scale:
             ax.set_xscale("symlog", linthresh=max(pos.min(), 1e-4))
-        ax.set_xlabel("gap to best" + (" (log scale)" if log_scale else ""),
+        ax.set_xlabel(t("score.gap_log") if log_scale else t("score.gap"),
                       fontsize=8.5, color=th.ink_muted)
         ax.set_yticks(range(len(gap)))
         ax.set_yticklabels(gap.index, fontsize=8.5)
         ax.grid(axis="x")
         ax.set_axisbelow(True)
         ax.margins(x=0.30)
-        ax.set_title(f"{int(h)}-day horizon", loc="left", fontsize=10.5,
+        ax.set_title(t("garch.horizon_panel", h=int(h)), loc="left", fontsize=10.5,
                      color=th.ink, fontweight="bold")
 
-    fig.suptitle(f"Out-of-sample {metric.upper()}: gap to the best model",
+    fig.suptitle(t("score.title", metric=metric.upper()),
                  x=0.008, y=1.105, ha="left", fontsize=13, fontweight="bold",
                  color=th.ink)
-    fig.text(0.008, 1.045, "shorter bar = better · raw " + metric.upper() +
-             " printed on each bar · naive benchmarks included so the GARCH "
-             "models have to earn their place", ha="left", fontsize=9.5,
-             color=th.ink_secondary)
+    fig.text(0.008, 1.045, t("score.subtitle", metric=metric.upper()),
+             ha="left", fontsize=9.5, color=th.ink_secondary)
     fig.tight_layout()
     return _save(fig, path)
 
@@ -661,14 +653,13 @@ def plot_vrp_term(vrp_df: pd.DataFrame, path: str | Path | None = None):
     ax.bar_label(bars, fmt="%+.2f", fontsize=9, padding=3, color=th.ink_secondary)
     ax.axhline(0, color=th.axis, lw=1.0)
     ax.set_xticks(x)
-    ax.set_xticklabels([f"{int(d)}d\nimplied {iv*100:.1f}% / model {g*100:.1f}%"
+    ax.set_xticklabels([t("vrp.tick", days=int(d), iv=iv * 100, g=g * 100)
                         for d, iv, g in zip(vrp_df["horizon_days"],
                                             vrp_df["atm_iv"], vrp_df["garch_vol"])],
                        fontsize=8.5)
     ax.grid(axis="y")
-    _titles(ax, "Volatility risk premium: implied minus GARCH forecast",
-            "positive = the market charges more for volatility than the model "
-            "forecasts (the normal state)", ylabel="vol points")
+    _titles(ax, t("vrp.term_title"), t("vrp.term_subtitle"),
+            ylabel=t("axis.vol_points"))
     fig.tight_layout()
     return _save(fig, path)
 
@@ -690,13 +681,12 @@ def plot_vrp_history(hist: pd.DataFrame, horizon_days: int = 21,
 
     ax = axes[0]
     ax.plot(df.index, df["implied_vol"] * 100, color=th.categorical[0], lw=1.5,
-            label="implied vol (option market, ex ante)")
+            label=t("vrp.implied"))
     ax.plot(df.index, df["realized_vol_fwd"] * 100, color=th.categorical[1],
-            lw=1.3, label=f"realised vol over the next {horizon_days}d (ex post)")
+            lw=1.3, label=t("vrp.realized_next", h=horizon_days))
     ax.legend(loc="upper left", ncol=2)
-    _titles(ax, "Implied volatility vs what actually happened",
-            "the wedge between the two lines is the premium option sellers collect",
-            ylabel="annualised vol (%)")
+    _titles(ax, t("vrp.hist_title"), t("vrp.hist_subtitle"),
+            ylabel=t("axis.ann_vol_pct"))
 
     ax = axes[1]
     v = df["vrp"] * 100
@@ -704,13 +694,12 @@ def plot_vrp_history(hist: pd.DataFrame, horizon_days: int = 21,
     ax.fill_between(df.index, 0, v.where(v < 0), color=neg, alpha=0.75, lw=0)
     ax.axhline(0, color=th.axis, lw=1.0)
     ax.axhline(v.mean(), color=th.ink_secondary, lw=1.2, ls="--")
-    ax.annotate(f"mean {v.mean():+.2f} vp", xy=(df.index[-1], v.mean()),
+    ax.annotate(t("vrp.mean", v=v.mean()), xy=(df.index[-1], v.mean()),
                 xytext=(-4, 6), textcoords="offset points", ha="right",
                 fontsize=9, color=th.ink_secondary, fontweight="bold")
-    _titles(ax, "Volatility risk premium",
-            f"positive {float((v > 0).mean())*100:.0f}% of the time — sellers win "
-            f"often and lose big, which is why the premium exists",
-            ylabel="vol points")
+    _titles(ax, t("vrp.premium_title"),
+            t("vrp.premium_subtitle", pct=float((v > 0).mean()) * 100),
+            ylabel=t("axis.vol_points"))
     fig.tight_layout()
     return _save(fig, path)
 
@@ -736,9 +725,7 @@ def plot_quote_funnel(funnel_df: pd.DataFrame, path: str | Path | None = None):
     ax.grid(axis="x")
     ax.set_axisbelow(True)
     ax.margins(x=0.16)
-    _titles(ax, "Quote-quality funnel",
-            "how many raw option quotes survive each filter on the way to the "
-            "surface", xlabel="quotes")
+    _titles(ax, t("funnel.title"), t("funnel.subtitle"), xlabel=t("axis.quotes"))
     fig.tight_layout()
     return _save(fig, path)
 
@@ -763,19 +750,17 @@ def plot_fit_residuals(surface, path: str | Path | None = None):
         ks = q["k"].to_numpy()[order]
         hs = half.to_numpy()[order]
         ax.fill_between(ks, -hs, hs, color=th.grid, alpha=0.85, lw=0,
-                        label="market half-spread (untradeable zone)")
+                        label=t("resid.halfspread"))
     pos = q["resid"] >= 0
     ax.scatter(q["k"][pos], q["resid"][pos], s=13, color=th.diverging[2],
-               alpha=0.8, label="market above model")
+               alpha=0.8, label=t("resid.above"))
     ax.scatter(q["k"][~pos], q["resid"][~pos], s=13, color=th.diverging[0],
-               alpha=0.8, label="market below model")
+               alpha=0.8, label=t("resid.below"))
     ax.axhline(0, color=th.axis, lw=1.0)
     ax.legend(loc="upper right", ncol=3)
     rmse = float(np.sqrt(np.mean(q["resid"] ** 2)))
-    _titles(ax, "Calibration residuals: market minus model",
-            f"RMSE {rmse:.2f} vol points · residuals inside the grey band are "
-            f"smaller than the cost of crossing the spread",
-            ylabel="vol points", xlabel="log-moneyness  log(K/F)")
+    _titles(ax, t("resid.title"), t("resid.subtitle", rmse=rmse),
+            ylabel=t("axis.vol_points"), xlabel=t("axis.log_moneyness"))
     fig.tight_layout()
     return _save(fig, path)
 
@@ -792,16 +777,16 @@ def plot_anomalies(anomalies: pd.DataFrame, path: str | Path | None = None):
     if anomalies is None or anomalies.empty:
         fig, ax = plt.subplots(figsize=(9, 2.4))
         ax.axis("off")
-        ax.text(0.0, 0.6, "No anomalies flagged", fontsize=15, fontweight="bold",
+        ax.text(0.0, 0.6, t("anom.none_title"), fontsize=15, fontweight="bold",
                 color=th.ink, transform=ax.transAxes)
-        ax.text(0.0, 0.25, "The surface is internally consistent: no calendar or "
-                "butterfly violations, no tenor out of line with its neighbours.",
-                fontsize=10, color=th.ink_secondary, transform=ax.transAxes)
+        ax.text(0.0, 0.25, t("anom.none_body"), fontsize=10,
+                color=th.ink_secondary, transform=ax.transAxes, wrap=True)
         return _save(fig, path)
 
     df = anomalies.head(12).iloc[::-1].copy()
     labels = [f"{r.category.replace('_', ' ')}"
-              + (f" · {int(r.tenor_days)}d" if np.isfinite(r.tenor_days) else "")
+              + (f" · {int(r.tenor_days)}{t('unit.days_suffix')}"
+                 if np.isfinite(r.tenor_days) else "")
               for r in df.itertuples()]
     mag = df["z_score"].abs().fillna(df["z_score"].abs().max() or 1.0).to_numpy()
 
@@ -809,16 +794,14 @@ def plot_anomalies(anomalies: pd.DataFrame, path: str | Path | None = None):
     bars = ax.barh(labels, mag, height=0.6,
                    color=[TH.severity_color(s) for s in df["severity"]],
                    edgecolor=th.surface, linewidth=1.2)
-    ax.bar_label(bars, labels=[f"  {s.upper()}  ·  z = {z:+.1f}" if np.isfinite(z)
-                               else f"  {s.upper()}  ·  hard violation"
-                               for s, z in zip(df["severity"], df["z_score"])],
+    ax.bar_label(bars, labels=[
+        t("anom.z", sev=t(f"sev.{s.lower()}"), z=z) if np.isfinite(z)
+        else t("anom.hard", sev=t(f"sev.{s.lower()}"))
+        for s, z in zip(df["severity"], df["z_score"])],
                  padding=3, fontsize=8.4, color=th.ink_secondary)
     ax.grid(axis="x")
     ax.set_axisbelow(True)
     ax.margins(x=0.28)
-    _titles(ax, "Relative-value screen",
-            "ranked by severity then magnitude · every flag needs a human check "
-            "for a stale quote or a scheduled event before it is a trade",
-            xlabel="|z-score| vs the cross-sectional benchmark")
+    _titles(ax, t("anom.title"), t("anom.subtitle"), xlabel=t("anom.axis"))
     fig.tight_layout()
     return _save(fig, path)

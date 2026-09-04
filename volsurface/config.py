@@ -138,6 +138,11 @@ class Config:
     surface: SurfaceConfig = field(default_factory=SurfaceConfig)
     analytics: AnalyticsConfig = field(default_factory=AnalyticsConfig)
 
+    # Language for charts and CLI output. Data — CSV column names, log messages,
+    # exception text — deliberately stays English so downstream scripts do not
+    # break when the display language changes.
+    language: str = "en"
+
     output_dir: Path = Path("outputs")
     figure_dir: Path = Path("outputs/figures")
     report_dir: Path = Path("outputs/reports")

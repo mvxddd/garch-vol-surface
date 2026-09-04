@@ -308,8 +308,10 @@ def make_all_figures(res: PipelineResult) -> dict[str, str]:
     import matplotlib.pyplot as plt
 
     from . import viz
+    from .i18n import set_language
     from .viz import plots as P
 
+    set_language(res.config.language)
     viz.use_theme("light")
     out_dir = Path(res.config.figure_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

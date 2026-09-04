@@ -1,5 +1,7 @@
 # GARCH Volatility Forecasting & the Implied Volatility Surface
 
+**English** · **[Русский](README.ru.md)**
+
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mvxddd/garch-vol-surface/blob/main/notebooks/garch_iv_surface_colab.ipynb)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -14,7 +16,8 @@ git clone https://github.com/mvxddd/garch-vol-surface && cd garch-vol-surface
 pip install -r requirements.txt
 python scripts/run_pipeline.py --ticker SPY          # full study, ~2 minutes
 python scripts/run_pipeline.py --provider synthetic  # no network required
-pytest -q                                            # 40 tests, ~5 seconds
+python scripts/run_pipeline.py --lang ru             # charts and CLI in Russian
+pytest -q                                            # 57 tests, ~8 seconds
 ```
 
 Or [open the notebook in Colab](https://colab.research.google.com/github/mvxddd/garch-vol-surface/blob/main/notebooks/garch_iv_surface_colab.ipynb) — cell 1 installs the one
@@ -23,6 +26,29 @@ dependency Colab lacks and clones the package for you.
 Results below are from a live SPY run (2 Sep 2026): **4,417 raw quotes → 1,620
 clean implied vols across 12 expiries**, every smile calibrated
 arbitrage-free to within **0.04–0.35 vol points** of the market mid.
+
+---
+
+## Interface language
+
+Charts and terminal output are translated with `--lang` (`en` by default, `ru`
+available), or from code:
+
+```python
+cfg = Config()
+cfg.language = "ru"
+```
+
+**What is and is not translated.** Only what a person reads: axis labels, the
+titles of all 15 charts, and the CLI summary. CSV column names, log messages
+and exception text stay English — those are data and developer surfaces, and a
+script reading the `vrp_vol_points` column must not break because someone
+changed the display language.
+
+For the same reason the volatility-risk-premium verdict travels as a stable
+code (`rich` / `cheap` / `in_line` / `na`) and is rendered into prose only at
+display time. Adding a language means adding one dict to `volsurface/i18n.py`;
+the test suite then enforces full key coverage and matching placeholders.
 
 ---
 
@@ -160,6 +186,7 @@ pipeline records a status per stage rather than dying. This is tested
 garch-vol-surface/
 ├── volsurface/
 │   ├── config.py               # every tunable, as typed dataclasses
+│   ├── i18n.py                 # en/ru string catalogue + t()
 │   ├── utils.py                # logging, retries, parquet cache, numerics
 │   ├── pipeline.py             # stage-isolated orchestration + PipelineResult
 │   ├── data/
@@ -434,7 +461,7 @@ over 1,906 observations.
 
 ## 13. Final Deliverables
 
-- **`volsurface/`** — a layered, tested Python package (~5,000 lines) with
+- **`volsurface/`** — a layered, tested Python package (~5,400 lines) with
   production error handling and a synthetic fallback that makes every path
   runnable offline.
 - **A Colab notebook** — 40 cells, executes head-to-tail in ~2 minutes,
@@ -443,7 +470,7 @@ over 1,906 observations.
 - **15 figures** including an interactive 3-D surface.
 - **15 CSV tables + a JSON run report** capturing config, per-stage status and
   headline results — so any figure can be traced back to the run that made it.
-- **40 tests** covering parity, Greeks, inversion round-trips, arbitrage
+- **57 tests** covering parity, Greeks, inversion round-trips, arbitrage
   freedom, look-ahead bias, and graceful degradation when a feed dies.
 
 ## 14. Resume Description
