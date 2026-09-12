@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.volsurface.snapshot</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PROJECT_DIR__/scripts/daily_snapshot.sh</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>VOLSURFACE_TICKERS</key>
+        <string>__TICKERS__</string>
+    </dict>
+
+    <!-- Weekdays only. launchd counts Sunday as 0, so 1-5 is Mon-Fri. The
+         script re-checks the day itself, so a manual run is still safe. -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Weekday</key><integer>1</integer>
+              <key>Hour</key><integer>__HOUR__</integer>
+              <key>Minute</key><integer>__MINUTE__</integer></dict>
+        <dict><key>Weekday</key><integer>2</integer>
+              <key>Hour</key><integer>__HOUR__</integer>
+              <key>Minute</key><integer>__MINUTE__</integer></dict>
+        <dict><key>Weekday</key><integer>3</integer>
+              <key>Hour</key><integer>__HOUR__</integer>
+              <key>Minute</key><integer>__MINUTE__</integer></dict>
+        <dict><key>Weekday</key><integer>4</integer>
+              <key>Hour</key><integer>__HOUR__</integer>
+              <key>Minute</key><integer>__MINUTE__</integer></dict>
+        <dict><key>Weekday</key><integer>5</integer>
+              <key>Hour</key><integer>__HOUR__</integer>
+              <key>Minute</key><integer>__MINUTE__</integer></dict>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__PROJECT_DIR__</string>
+
+    <key>StandardOutPath</key>
+    <string>__PROJECT_DIR__/outputs/logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__PROJECT_DIR__/outputs/logs/launchd.err.log</string>
+
+    <!-- If the Mac was asleep at the scheduled time, run once on wake rather
+         than silently dropping the day. A gap in the history is the one thing
+         this job exists to prevent. -->
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>
