@@ -282,15 +282,36 @@ class VolSurface:
         ordered = [c for c in cols_first if c in df.columns]
         return df[ordered + [c for c in df.columns if c not in ordered]]
 
+    def quote_support(self) -> dict[float, tuple[float, float]]:
+        """Log-moneyness range actually quoted at each calibrated maturity."""
+        if self.quotes is None or self.quotes.empty:
+            return {}
+        span = self.quotes.groupby("T")["k"].agg(["min", "max"])
+        return {float(T): (float(r["min"]), float(r["max"]))
+                for T, r in span.iterrows()}
+
     def calendar_arbitrage(self) -> dict[str, object]:
-        """Calendar-spread check across calibrated slices (SVI slices only)."""
+        """
+        Calendar-spread check across calibrated slices (SVI slices only).
+
+        Restricted to the strikes both expiries actually quote — see
+        `check_calendar_arbitrage` for why comparing extrapolations is worse
+        than useless.
+        """
         svi = [s for s in self.slices if isinstance(s, SVIParams)]
         if len(svi) >= 2:
-            return check_calendar_arbitrage(svi)
+            return check_calendar_arbitrage(svi, support=self.quote_support())
         # Generic numeric check for non-SVI slices.
-        grid = np.linspace(-0.3, 0.2, 61)
+        base = np.linspace(-0.3, 0.2, 61)
+        support = self.quote_support()
         violations, worst = [], 0.0
         for near, far in zip(self.slices[:-1], self.slices[1:]):
+            grid = base
+            ns, fs = support.get(near.T), support.get(far.T)
+            if ns and fs:
+                grid = base[(base >= max(ns[0], fs[0])) & (base <= min(ns[1], fs[1]))]
+                if grid.size == 0:
+                    continue
             diff = far.total_variance(grid) - near.total_variance(grid)
             if (diff < -1e-6).any():
                 depth = float(-diff.min())

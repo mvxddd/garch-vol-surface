@@ -162,6 +162,8 @@ def synthetic_option_chain(
                     "volume": int(rng.lognormal(6.0 - 12 * wing, 1.0)),
                     "open_interest": int(rng.lognormal(7.5 - 10 * wing, 1.0)),
                     "provider_iv": float(sigma_true),   # ground truth for tests
+                    # Generated data is by definition current.
+                    "last_trade": pd.Timestamp(asof, tz="UTC"),
                     "spot": float(spot),
                     "asof": asof,
                     "synthetic": True,

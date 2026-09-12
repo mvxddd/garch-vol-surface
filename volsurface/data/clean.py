@@ -65,6 +65,66 @@ def _mid_price(df: pd.DataFrame) -> pd.Series:
     return pd.Series(np.where(np.isfinite(mid), mid, last), index=df.index)
 
 
+
+def _drop_stale_fallback_quotes(df: pd.DataFrame, cfg: OptionsConfig,
+                                funnel: QuoteFunnel) -> pd.DataFrame:
+    """
+    Drop quotes that are priced off an old trade.
+
+    The distinction that makes this surgical rather than destructive: a quote
+    with a live two-sided market is priced off **bid/ask**, which the feed
+    snapshots at fetch time. Its last *trade* may be days old without the price
+    being stale at all — market makers requote continuously without trading. On
+    a live SPY chain, 3,025 of 3,196 contracts are two-sided, and a naive
+    "last traded within a day" filter would throw away a quarter of them for
+    nothing.
+
+    The real risk is the other 5%: no two-sided market, so `_mid_price` falls
+    back to the last trade. On that same chain, 117 of those 171 quotes had last
+    traded more than a session earlier — genuinely stale prices being mixed into
+    a surface whose other expiries are current. That is what manufactures fake
+    calendar arbitrage.
+
+    Age is measured in **sessions**, ranked from the chain's own distinct trade
+    dates, rather than in hours. A snapshot taken on a Saturday sees Friday's
+    trades at 24-40 hours old, which is not stale — it is the most recent
+    session. Using the chain to define its own clock avoids needing a market
+    calendar, and works in any timezone.
+    """
+    if "last_trade" not in df.columns or df["last_trade"].isna().all():
+        funnel.record("last-trade freshness (no data)", len(df))
+        return df
+
+    last_trade = pd.to_datetime(df["last_trade"], errors="coerce", utc=True)
+    sessions = last_trade.dt.tz_convert("America/New_York").dt.date
+
+    # Age in business days back from the freshest trade in the chain. Counting
+    # *elapsed* sessions rather than ranking the distinct dates that happen to
+    # appear matters: a chain whose trades fall on days 0, 9 and 30 would rank
+    # the nine-day-old quote as "one session back" and keep it.
+    latest = sessions.dropna().max() if sessions.notna().any() else None
+    if latest is None:
+        funnel.record("last-trade freshness (no data)", len(df))
+        return df
+    age = sessions.map(
+        lambda d: float(np.busday_count(d, latest)) if pd.notna(d) else np.nan)
+    df = df.assign(quote_age_sessions=age)
+
+    two_sided = (df["bid"] > 0) & (df["ask"] > 0) & (df["ask"] >= df["bid"])
+    # Unknown age is not evidence of staleness; only drop what we can show.
+    too_old = age.notna() & (age > cfg.max_last_trade_age_sessions)
+    drop = too_old & ~two_sided
+
+    if drop.any():
+        LOG.info("Dropping %d quote(s) with no two-sided market whose last trade "
+                 "is more than %d session(s) old", int(drop.sum()),
+                 cfg.max_last_trade_age_sessions)
+    out = df[~drop]
+    funnel.record(f"fresh enough to price ({cfg.max_last_trade_age_sessions} "
+                  f"session fallback)", len(out))
+    return out
+
+
 def clean_option_chain(chain: pd.DataFrame, cfg: OptionsConfig,
                        asof: pd.Timestamp | None = None,
                        funnel: QuoteFunnel | None = None) -> pd.DataFrame:
@@ -114,6 +174,8 @@ def clean_option_chain(chain: pd.DataFrame, cfg: OptionsConfig,
 
     df = df[df["volume"].fillna(0) >= cfg.min_volume]
     funnel.record(f"volume >= {cfg.min_volume}", len(df))
+
+    df = _drop_stale_fallback_quotes(df, cfg, funnel)
 
     if df.empty:
         raise ValueError(

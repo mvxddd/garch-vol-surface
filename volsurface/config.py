@@ -91,6 +91,14 @@ class OptionsConfig:
     min_iv: float = 0.01
     min_quotes_per_expiry: int = 6     # need enough points to fit a smile
 
+    # Staleness. A quote with a live two-sided market is priced off bid/ask,
+    # which the feed snapshots at fetch time, so its last *trade* may be old
+    # without the price being stale — market makers requote without trading.
+    # The danger is the ~5% of contracts with no two-sided market, where we
+    # fall back to the last trade: on a live SPY chain 117 of those 171 quotes
+    # had last traded more than a session ago. This bounds that fallback only.
+    max_last_trade_age_sessions: int = 1
+
     # Listed equity options are American. Inverting them with a European model
     # biases implied vol *upward*, by the early-exercise value. The default
     # stays "european" because it is ~40x faster and the bias is small for OTM

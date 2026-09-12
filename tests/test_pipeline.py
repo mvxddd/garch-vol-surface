@@ -112,3 +112,44 @@ def test_pipeline_survives_a_broken_option_feed(monkeypatch):
     assert res.status["build_surface"] == "failed"
     assert "simulated provider outage" in res.errors["build_surface"]
     assert res.best_fit is not None            # the useful half survived
+
+
+def test_stale_fallback_quotes_are_dropped_but_live_ones_kept():
+    """
+    A quote with a live two-sided market is priced off bid/ask, which the feed
+    snapshots now — its last *trade* being old says nothing about the price.
+    Only quotes that fall back to the last trade need a freshness check.
+    """
+    from volsurface.data.clean import clean_option_chain
+
+    base = dict(expiry=ASOF + pd.Timedelta(days=30), option_type="call",
+                volume=10, open_interest=500, provider_iv=0.2, spot=SPOT,
+                asof=ASOF, synthetic=False)
+    old = pd.Timestamp(ASOF - pd.Timedelta(days=9), tz="UTC")
+    fresh = pd.Timestamp(ASOF, tz="UTC")
+
+    chain = pd.DataFrame([
+        # two-sided, stale trade -> KEPT (we price off the live quote)
+        {**base, "strike": 440.0, "bid": 14.0, "ask": 14.4, "last_price": 14.2,
+         "last_trade": old},
+        # no two-sided market, stale trade -> DROPPED
+        {**base, "strike": 450.0, "bid": 0.0, "ask": 0.0, "last_price": 8.0,
+         "last_trade": old},
+        # no two-sided market, fresh trade -> KEPT
+        {**base, "strike": 460.0, "bid": 0.0, "ask": 0.0, "last_price": 4.0,
+         "last_trade": fresh},
+    ])
+
+    kept = set(clean_option_chain(chain, OptionsConfig(), asof=ASOF)["strike"])
+    assert 440.0 in kept, "a live two-sided quote must survive an old last trade"
+    assert 460.0 in kept, "a fresh fallback quote must survive"
+    assert 450.0 not in kept, "a stale fallback quote must be dropped"
+
+
+def test_missing_trade_timestamps_do_not_drop_anything():
+    """Absence of evidence is not evidence of staleness."""
+    from volsurface.data.clean import clean_option_chain
+
+    chain = synthetic_option_chain(SPOT, asof=ASOF).assign(last_trade=pd.NaT)
+    cleaned = clean_option_chain(chain, OptionsConfig(), asof=ASOF)
+    assert len(cleaned) > 0

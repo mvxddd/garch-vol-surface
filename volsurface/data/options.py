@@ -22,7 +22,8 @@ from .synthetic import synthetic_option_chain
 LOG = get_logger("volsurface.options")
 
 SCHEMA = ["expiry", "strike", "option_type", "bid", "ask", "last_price",
-          "volume", "open_interest", "provider_iv", "spot", "asof", "synthetic"]
+          "volume", "open_interest", "provider_iv", "last_trade", "spot",
+          "asof", "synthetic"]
 
 
 @retry(attempts=3, backoff=2.0, logger=LOG)
@@ -113,6 +114,11 @@ def _load_yfinance_chain(ticker: str, opt_cfg: OptionsConfig,
                                                errors="coerce").fillna(0),
                 "provider_iv": pd.to_numeric(df.get("impliedVolatility"),
                                              errors="coerce"),
+                # When there is no two-sided market we price off the last
+                # trade, and that trade can be days old. This is the only
+                # freshness signal the feed gives us.
+                "last_trade": pd.to_datetime(df.get("lastTradeDate"),
+                                             errors="coerce", utc=True),
             })
             frames.append(part)
 
@@ -166,6 +172,9 @@ def _load_polygon_chain(ticker: str, opt_cfg: OptionsConfig, api_key: str,
                 "volume": day.get("volume", 0),
                 "open_interest": item.get("open_interest", 0),
                 "provider_iv": item.get("implied_volatility"),
+                "last_trade": pd.to_datetime(
+                    (day.get("last_updated") or quote.get("last_updated")),
+                    unit="ns", errors="coerce", utc=True),
             })
         url = payload.get("next_url")
         pages += 1

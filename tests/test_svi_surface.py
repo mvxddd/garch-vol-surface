@@ -106,3 +106,42 @@ def test_grid_is_finite_and_ordered(surface):
     assert np.all(np.diff(iv[:, left], axis=1) <= 1e-9)
     for row in iv:
         assert row[0] > row[np.argmin(np.abs(k))]
+
+
+def test_calendar_check_ignores_crossings_outside_quoted_strikes():
+    """
+    Regression: the calendar test used to run on a fixed grid out to k = +0.25
+    regardless of where the quotes ended, so two SVI extrapolations crossing
+    past the last listed strike were reported as arbitrage. On a live SPY chain
+    that produced three phantom violations every single day.
+    """
+    from volsurface.models.svi import SVIParams, check_calendar_arbitrage
+
+    # Far slice sits above the near one near the money but has a flatter right
+    # wing, so the two cross out at large positive k — where nothing is quoted.
+    near = SVIParams(a=0.0020, b=0.060, rho=-0.7, m=0.0, sigma=0.10, T=0.10)
+    far = SVIParams(a=-0.0036, b=0.120, rho=-0.7, m=0.0, sigma=0.10, T=0.20)
+
+    k_far_out = np.array([0.22])
+    assert far.total_variance(k_far_out)[0] < near.total_variance(k_far_out)[0]
+    k_near_money = np.array([0.0])
+    assert far.total_variance(k_near_money)[0] > near.total_variance(k_near_money)[0]
+
+    # Unrestricted, the crossing is reported.
+    assert check_calendar_arbitrage([near, far])["has_arbitrage"] is True
+
+    # Restricted to strikes both expiries actually quote, it is not. The two
+    # curves cross just above k = +0.01, so a chain quoted only down-strike
+    # never sees it.
+    support = {0.10: (-0.15, 0.00), 0.20: (-0.20, 0.00)}
+    assert check_calendar_arbitrage([near, far], support=support)["has_arbitrage"] is False
+
+
+def test_calendar_check_still_catches_a_real_violation():
+    """The restriction must not silence a crossing inside the quoted range."""
+    from volsurface.models.svi import SVIParams, check_calendar_arbitrage
+
+    near = SVIParams(a=0.0060, b=0.05, rho=-0.6, m=0.0, sigma=0.10, T=0.10)
+    far = SVIParams(a=0.0030, b=0.05, rho=-0.6, m=0.0, sigma=0.10, T=0.20)
+    support = {0.10: (-0.10, 0.10), 0.20: (-0.10, 0.10)}
+    assert check_calendar_arbitrage([near, far], support=support)["has_arbitrage"] is True

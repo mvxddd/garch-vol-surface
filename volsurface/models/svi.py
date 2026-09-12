@@ -305,22 +305,42 @@ def fit_svi(
 
 def check_calendar_arbitrage(slices: list[SVIParams],
                              k_grid: np.ndarray | None = None,
-                             tol: float = 1e-6) -> dict[str, object]:
+                             tol: float = 1e-6,
+                             support: dict[float, tuple[float, float]] | None = None
+                             ) -> dict[str, object]:
     """
     Calendar-spread arbitrage test.
 
     Total variance must be non-decreasing in maturity at every fixed
     log-moneyness: w(k, T1) <= w(k, T2) for T1 < T2. A violation means a
-    calendar spread with a guaranteed payoff — usually a stale front-month
-    quote rather than a genuine opportunity, but always worth flagging.
+    calendar spread with a guaranteed payoff — usually a stale quote rather
+    than a genuine opportunity, but always worth flagging.
+
+    `support` maps each slice's T to the log-moneyness range actually quoted at
+    that expiry; when given, each pair is only compared where **both** expiries
+    have data. This matters more than it sounds. Without it the test runs on a
+    fixed grid out to k = +0.25, and on a live SPY chain all three "violations"
+    it reported sat beyond the last quoted strike of the nearer expiry — two
+    SVI extrapolations crossing, not a tradeable spread. Extrapolation is not
+    evidence, and a screen that cries arbitrage three times a day on every
+    chain teaches its reader to ignore it.
     """
     ordered = sorted([s for s in slices if np.isfinite(s.T)], key=lambda s: s.T)
     if len(ordered) < 2:
         return {"has_arbitrage": False, "violations": [], "max_violation": 0.0}
 
-    grid = np.linspace(-0.35, 0.25, 121) if k_grid is None else np.asarray(k_grid)
+    base_grid = np.linspace(-0.35, 0.25, 121) if k_grid is None else np.asarray(k_grid)
     violations, worst = [], 0.0
     for near, far in zip(ordered[:-1], ordered[1:]):
+        grid = base_grid
+        if support:
+            near_span, far_span = support.get(near.T), support.get(far.T)
+            if near_span and far_span:
+                lo = max(near_span[0], far_span[0])
+                hi = min(near_span[1], far_span[1])
+                grid = base_grid[(base_grid >= lo) & (base_grid <= hi)]
+                if grid.size == 0:
+                    continue
         diff = far.total_variance(grid) - near.total_variance(grid)
         bad = diff < -tol
         if bad.any():

@@ -20,7 +20,7 @@ python scripts/run_pipeline.py --provider synthetic  # no network required
 python scripts/run_pipeline.py --lang ru             # charts and CLI in Russian
 python scripts/run_pipeline.py --snapshot            # also save to the history store
 streamlit run app.py                                 # interactive web interface
-pytest -q                                            # 91 tests, ~12 seconds
+pytest -q                                            # 95 tests, ~12 seconds
 ```
 
 Or [open the notebook in Colab](https://colab.research.google.com/github/mvxddd/garch-vol-surface/blob/main/notebooks/garch_iv_surface_colab.ipynb) — cell 1 installs the one
@@ -117,6 +117,39 @@ One honest limit: inside about three weeks the early-exercise value is smaller
 than the tree's own discretisation error, so the difference there is numerical
 noise rather than signal. `convergence_check()` measures that error for your
 parameters instead of asking you to trust a step count.
+
+### The calendar-arbitrage flags were the screen's own bug
+
+This project spent a while reporting three calendar-arbitrage violations on
+every SPY chain, and listing "non-simultaneous quotes" as its biggest remaining
+weakness. Both were wrong.
+
+The suspected cause was stale quotes, so the first fix captured the
+`lastTradeDate` the feed already sends and filtered on it. That turned out to
+be worth having but beside the point: of 3,196 contracts, 3,025 have a live
+two-sided market and are priced off bid/ask, which is a current snapshot no
+matter when the contract last traded. Only the remaining 171 fall back to the
+last trade, and the earlier liquidity filters had already removed nearly all of
+them. The filter dropped **one** quote and changed nothing.
+
+The actual cause was the test itself. `check_calendar_arbitrage` compared total
+variance on a fixed grid out to k = +0.25 regardless of where each expiry's
+quotes ended — so it was comparing two SVI *extrapolations* past the last
+listed strike. All three "violations" sat there:
+
+| Pair | Violation at | Near expiry quoted to | Verdict |
+|---|---|---|---|
+| 0.129 → 0.214 | k ∈ [+0.18, +0.25] | +0.132 | extrapolation |
+| 0.214 → 0.299 | k ∈ [+0.23, +0.25] | +0.179 | extrapolation |
+| 0.378 → 0.545 | k ∈ [+0.23, +0.25] | +0.185 | extrapolation |
+
+The check now runs only where **both** expiries have quotes. SPY, TSLA and
+NVDA all come back clean, and the screen's remaining flags dropped from 15 to
+13 — the ones that are left are single-strike outliers and skew kinks, which is
+what it should have been reporting all along.
+
+Worth stating plainly: a screen that cries arbitrage three times a day on every
+chain trains its reader to ignore it, which is worse than not having one.
 
 ### Validated on single names
 
@@ -292,9 +325,11 @@ pipeline records a status per stage rather than dying. This is tested
 
 **Data-quality caveats you should know before trusting any output:**
 
-- Yahoo option quotes are snapshots and are **not simultaneous across
-  expiries**, which manufactures small calendar violations. The live run flagged
-  two, both under 0.003 in total variance — noise, not opportunity.
+- Yahoo option quotes are snapshots and are not perfectly simultaneous across
+  expiries. In practice this matters less than it sounds: ~95% of contracts
+  carry a live two-sided market that the feed snapshots at fetch time. The 5%
+  without one are priced off their last trade, which can be days old, and those
+  are filtered on trade freshness.
 - Open interest updates once daily, before the open.
 - Listed equity options are **American**. Both models ship: European (Black-76,
   the fast default) and American (a vectorised binomial tree, `--american`).
@@ -351,7 +386,7 @@ garch-vol-surface/
 │   ├── run_pipeline.py         # CLI
 │   ├── build_dashboard.py      # figures + report → one HTML page
 │   └── build_notebook.py       # .py → .ipynb
-├── tests/                      # 91 tests
+├── tests/                      # 95 tests
 └── outputs/
     ├── figures/                # 15 PNG + 1 interactive HTML
     └── reports/                # 15 CSV tables + run_report.json
@@ -576,7 +611,7 @@ a failure: realised vol over a short window is dominated by noise.
 | Per-expiry fit RMSE | 0.04 – 0.35 vol points |
 | Per-expiry bias | ≤ 0.08 vol points, no systematic sign |
 | Butterfly-arbitrage-free slices | 12 / 12 |
-| Calendar violations | 2, both < 0.003 in total variance (non-simultaneous snapshots) |
+| Calendar violations | 0 (see below — the three this used to report were phantom) |
 | Quotes surviving the funnel | 1,620 / 4,417 |
 | Model IV inside the market's bid/ask | 13 – 45% by expiry |
 
@@ -609,7 +644,7 @@ over 1,906 observations.
 - **15 figures** including an interactive 3-D surface.
 - **15 CSV tables + a JSON run report** capturing config, per-stage status and
   headline results — so any figure can be traced back to the run that made it.
-- **91 tests** covering parity, Greeks, inversion round-trips, arbitrage
+- **95 tests** covering parity, Greeks, inversion round-trips, arbitrage
   freedom, look-ahead bias, and graceful degradation when a feed dies.
 
 ## 14. Resume Description
@@ -665,8 +700,6 @@ over 1,906 observations.
 - **Polygon historical chains** → a *history* of surfaces, which is what turns
   the anomaly screen from cross-sectional to time-series and lets every metric
   be z-scored against its own past.
-- **Timestamp alignment.** Snapshotting quotes with exchange timestamps and
-  aligning them would remove the spurious calendar violations entirely.
 - **Daily persistence** to a database, plus a scheduled job — the surface
   becomes a monitored asset rather than a one-off.
 - **Earnings and dividend calendars** to explain away term-structure kinks
