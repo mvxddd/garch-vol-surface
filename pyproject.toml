@@ -34,5 +34,11 @@ include = ["volsurface*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Put the project root on sys.path so a bare `pytest` works from a fresh clone
+# without installing the package first. `python -m pytest` adds the working
+# directory implicitly and `pytest` does not, so without this the two commands
+# disagree — which is exactly how the README's own `pytest -q` instruction came
+# to be broken while every local run passed.
+pythonpath = ["."]
 markers = ["slow: end-to-end runs (deselect with -m 'not slow')"]
 filterwarnings = ["ignore::FutureWarning", "ignore::RuntimeWarning"]
