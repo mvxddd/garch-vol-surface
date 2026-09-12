@@ -2,6 +2,7 @@
 
 **[English](README.md)** · **Русский**
 
+[![tests](https://github.com/mvxddd/garch-vol-surface/actions/workflows/tests.yml/badge.svg)](https://github.com/mvxddd/garch-vol-surface/actions/workflows/tests.yml)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mvxddd/garch-vol-surface/blob/main/notebooks/garch_iv_surface_colab.ipynb)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
