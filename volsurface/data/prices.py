@@ -5,72 +5,13 @@ import numpy as np
 import pandas as pd
 
 from ..config import DataConfig
-from ..utils import cache_path, get_logger, read_cache, retry, write_cache
+from ..utils import cache_path, get_logger, read_cache, write_cache
+from .providers import VOL_INDEX_MAP, get_provider
 from .synthetic import synthetic_prices
 
 LOG = get_logger("volsurface.prices")
 
 _OHLCV = ["Open", "High", "Low", "Close", "Volume"]
-
-
-def _flatten_columns(df: pd.DataFrame, ticker: str) -> pd.DataFrame:
-    """
-    yfinance returns a MultiIndex (field, ticker) for some call signatures and
-    flat columns for others, and it has changed twice in recent releases.
-    Normalise both shapes to flat OHLCV so downstream code never cares.
-    """
-    if isinstance(df.columns, pd.MultiIndex):
-        levels = df.columns.get_level_values
-        if ticker in set(levels(-1)):
-            df = df.xs(ticker, axis=1, level=-1)
-        elif ticker in set(levels(0)):
-            df = df.xs(ticker, axis=1, level=0)
-        else:
-            df.columns = [c[0] for c in df.columns]
-    df.columns = [str(c).title().replace("Adj Close", "Adj Close") for c in df.columns]
-    return df
-
-
-@retry(attempts=3, backoff=1.5, logger=LOG)
-def _download_yfinance(ticker: str, start: str, end: str | None) -> pd.DataFrame:
-    import yfinance as yf
-
-    hist = yf.Ticker(ticker).history(
-        start=start, end=end, interval="1d", auto_adjust=True, actions=False,
-    )
-    if hist is None or hist.empty:
-        raise ValueError(f"yfinance returned no rows for {ticker}")
-    hist = _flatten_columns(hist, ticker)
-    hist.index = pd.to_datetime(hist.index).tz_localize(None)
-    return hist
-
-
-@retry(attempts=3, backoff=1.5, logger=LOG)
-def _download_polygon(ticker: str, start: str, end: str | None,
-                      api_key: str) -> pd.DataFrame:
-    """Polygon aggregates endpoint — the recommended production upgrade."""
-    import requests
-
-    end = end or pd.Timestamp.today().strftime("%Y-%m-%d")
-    url = (f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/"
-           f"{start}/{end}")
-    resp = requests.get(
-        url, params={"adjusted": "true", "sort": "asc", "limit": 50_000,
-                     "apiKey": api_key},
-        timeout=30,
-    )
-    resp.raise_for_status()
-    payload = resp.json()
-    results = payload.get("results") or []
-    if not results:
-        raise ValueError(f"Polygon returned no rows for {ticker}: "
-                         f"{payload.get('status')}")
-    df = pd.DataFrame(results)
-    df["Date"] = pd.to_datetime(df["t"], unit="ms")
-    df = (df.rename(columns={"o": "Open", "h": "High", "l": "Low",
-                             "c": "Close", "v": "Volume"})
-            .set_index("Date")[_OHLCV])
-    return df
 
 
 def load_prices(cfg: DataConfig) -> pd.DataFrame:
@@ -91,26 +32,16 @@ def load_prices(cfg: DataConfig) -> pd.DataFrame:
             LOG.info("Loaded %d cached price rows for %s", len(df), cfg.ticker)
             return df
 
-    df: pd.DataFrame | None = None
-    if cfg.provider == "synthetic":
+    try:
+        df = get_provider(cfg).prices(cfg.ticker, cfg.start, cfg.end)
+        LOG.info("Downloaded %d price rows for %s from %s",
+                 len(df), cfg.ticker, cfg.provider)
+    except Exception as exc:
+        LOG.error("Price download failed for %s (%s): %s",
+                  cfg.ticker, cfg.provider, exc)
+        if not cfg.allow_synthetic_fallback:
+            raise
         df = synthetic_prices(cfg.start, cfg.end, seed=cfg.synthetic_seed)
-    else:
-        try:
-            if cfg.provider == "polygon":
-                if not cfg.polygon_api_key:
-                    raise ValueError("POLYGON_API_KEY is not set")
-                df = _download_polygon(cfg.ticker, cfg.start, cfg.end,
-                                       cfg.polygon_api_key)
-            else:
-                df = _download_yfinance(cfg.ticker, cfg.start, cfg.end)
-            LOG.info("Downloaded %d price rows for %s from %s",
-                     len(df), cfg.ticker, cfg.provider)
-        except Exception as exc:
-            LOG.error("Price download failed for %s (%s): %s",
-                      cfg.ticker, cfg.provider, exc)
-            if not cfg.allow_synthetic_fallback:
-                raise
-            df = synthetic_prices(cfg.start, cfg.end, seed=cfg.synthetic_seed)
 
     keep = [c for c in _OHLCV if c in df.columns]
     if "Close" not in keep:
@@ -179,34 +110,24 @@ def load_vol_index(cfg: DataConfig, index_ticker: str | None = None
                    ) -> pd.Series | None:
     """
     Daily history of the listed implied-vol index for this underlying (VIX for
-    SPY/SPX, VXN for QQQ, RVX for IWM, ...), returned in **decimal** vol.
+    SPY/SPX, VXN for QQQ, RVX for IWM, ...), in **decimal** vol.
 
     This is the only practical way to get a long implied-volatility history
     without a paid options archive: the index is a model-free 30-day implied
-    vol computed from the whole option chain, published daily since 1990. It
-    stands in for "ATM implied vol" in the historical VRP study.
+    vol computed from the whole chain and published daily since 1990. It stands
+    in for "ATM implied vol" in the historical VRP study.
 
-    Returns None (with a warning) when no index maps to the ticker or the
-    download fails — the VRP *snapshot* never depends on this, only the
-    historical time series does.
+    Returns None when no index maps to the ticker or the download fails — the
+    VRP *snapshot* never depends on this, only the historical series does.
     """
-    idx = index_ticker or VOL_INDEX_MAP.get(cfg.ticker.upper())
-    if idx is None:
-        LOG.info("No listed vol index maps to %s — skipping the historical "
-                 "VRP study (the current-snapshot VRP is unaffected).", cfg.ticker)
-        return None
-
-    if cfg.provider == "synthetic":
-        return None
-    try:
-        hist = _download_yfinance(idx, cfg.start, cfg.end)
-        s = (hist["Close"].astype(float) / 100.0).rename(f"{idx}_iv")
-        LOG.info("Loaded %d observations of %s (mean %.1f%%)",
-                 len(s), idx, s.mean() * 100)
-        return s
-    except Exception as exc:
-        LOG.warning("Could not load vol index %s: %s", idx, exc)
-        return None
+    if index_ticker is not None:
+        try:
+            hist = get_provider(cfg).prices(index_ticker, cfg.start, cfg.end)
+            return (hist["Close"].astype(float) / 100.0).rename(f"{index_ticker}_iv")
+        except Exception as exc:
+            LOG.warning("Could not load vol index %s: %s", index_ticker, exc)
+            return None
+    return get_provider(cfg).vol_index(cfg.ticker, cfg.start, cfg.end)
 
 
 def synthetic_vol_index(returns: pd.Series, premium: float = 1.28,

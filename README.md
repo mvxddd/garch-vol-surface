@@ -20,7 +20,7 @@ python scripts/run_pipeline.py --provider synthetic  # no network required
 python scripts/run_pipeline.py --lang ru             # charts and CLI in Russian
 python scripts/run_pipeline.py --snapshot            # also save to the history store
 streamlit run app.py                                 # interactive web interface
-pytest -q                                            # 95 tests, ~12 seconds
+pytest -q                                            # 109 tests, ~12 seconds
 ```
 
 Or [open the notebook in Colab](https://colab.research.google.com/github/mvxddd/garch-vol-surface/blob/main/notebooks/garch_iv_surface_colab.ipynb) — cell 1 installs the one
@@ -150,6 +150,60 @@ what it should have been reporting all along.
 
 Worth stating plainly: a screen that cries arbitrage three times a day on every
 chain trains its reader to ignore it, which is worse than not having one.
+
+### Running it as a service
+
+Three things stand between this repository and a product, and only one of them
+is code.
+
+**The data licence is the blocker.** The default provider scrapes an
+undocumented Yahoo endpoint; Yahoo's terms do not permit commercial
+redistribution, there is no SLA, and the response shape has changed twice in
+recent releases. A licensed vendor (Polygon, ORATS, Cboe DataShop) is a
+prerequisite, and note that a paid API key is *not* the same as a
+redistribution licence — OPRA charges separately for serving options data on to
+end users, and that fee usually decides whether the product works
+economically. This is not legal advice; verify your own contract.
+
+`volsurface/data/providers.py` is the seam. Every layer above is written against
+one tidy schema and does not know where the numbers came from, so a new vendor
+is a class and a registration:
+
+```python
+register_provider("myvendor", MyVendor)   # then provider="myvendor" everywhere
+```
+
+Each provider must answer `is_licensed_for_redistribution()`, and
+`Config.for_production()` refuses to start on one that answers False:
+
+```python
+Config.for_production("SPY", provider="yfinance")
+# PermissionError: Provider 'yfinance' is not licensed for redistribution...
+```
+
+That config also turns the **synthetic fallback off**. In research, quietly
+simulating a chain when the feed is down keeps a notebook running; in a service
+it serves invented numbers as market data, which is the worst failure available
+here.
+
+**Calculate ahead, not on demand.** A single run takes ~15 seconds and downloads
+a chain; ten simultaneous requests would be ten simultaneous downloads and the
+end of your rate limit. `volsurface/batch.py` is the scheduled pass — one sweep
+over a universe, results persisted, and a request becomes a read:
+
+```bash
+python scripts/precompute.py --universe --provider polygon --production
+python scripts/precompute.py --cross-section     # today's universe, side by side
+```
+
+It isolates failures (one delisted name costs one name), resumes after a crash,
+and paces itself between tickers.
+
+**Regulation is worth a lawyer before a launch,** not after. The screen emits a
+`suggested_action` column. General market commentary usually falls under a
+publisher's exemption; personalised recommendations are regulated activity in
+most jurisdictions. The disclaimer at the bottom of this file is not sufficient
+for a paid service.
 
 ### Validated on single names
 
@@ -361,6 +415,7 @@ garch-vol-surface/
 │   ├── portfolio.py            # position risk, vega ladders, stress grids
 │   ├── history.py              # daily snapshot store + z-scores
 │   ├── backtest.py             # VRP harvesting with transaction costs
+│   ├── batch.py                # scheduled universe pass
 │   ├── data/
 │   │   ├── prices.py           # OHLCV, returns, vol-index history
 │   │   ├── options.py          # chain retrieval, normalised to one schema
@@ -386,7 +441,7 @@ garch-vol-surface/
 │   ├── run_pipeline.py         # CLI
 │   ├── build_dashboard.py      # figures + report → one HTML page
 │   └── build_notebook.py       # .py → .ipynb
-├── tests/                      # 95 tests
+├── tests/                      # 109 tests
 └── outputs/
     ├── figures/                # 15 PNG + 1 interactive HTML
     └── reports/                # 15 CSV tables + run_report.json
@@ -644,7 +699,7 @@ over 1,906 observations.
 - **15 figures** including an interactive 3-D surface.
 - **15 CSV tables + a JSON run report** capturing config, per-stage status and
   headline results — so any figure can be traced back to the run that made it.
-- **95 tests** covering parity, Greeks, inversion round-trips, arbitrage
+- **109 tests** covering parity, Greeks, inversion round-trips, arbitrage
   freedom, look-ahead bias, and graceful degradation when a feed dies.
 
 ## 14. Resume Description

@@ -35,6 +35,16 @@ class DataConfig:
     polygon_api_key: str | None = field(
         default_factory=lambda: os.environ.get("POLYGON_API_KEY")
     )
+    # Whether your contract with the vendor permits serving this data on to
+    # third parties. A paid API key is not the same thing: OPRA charges
+    # separately for redistribution, and that fee usually decides whether an
+    # options product is viable. `Config.for_production` refuses to start
+    # without it.
+    redistribution_licensed: bool = field(
+        default_factory=lambda: os.environ.get(
+            "VOLSURFACE_REDISTRIBUTION_LICENSED", "").lower()
+        in {"1", "true", "yes"}
+    )
 
     cache_dir: Path = Path("outputs/data")
     use_cache: bool = True
@@ -172,6 +182,51 @@ class Config:
     figure_dir: Path = Path("outputs/figures")
     report_dir: Path = Path("outputs/reports")
     verbose: bool = True
+
+    @classmethod
+    def for_production(cls, ticker: str, provider: str = "polygon",
+                       allow_unlicensed: bool = False) -> "Config":
+        """
+        A config safe to serve results from, as opposed to research defaults.
+
+        Three differences from `Config()`, each of which is a way this project
+        could embarrass someone who shipped it unchanged:
+
+        * **No synthetic fallback.** In research, quietly simulating a chain
+          when the feed is down keeps a notebook running. In a product it
+          serves invented numbers as market data, which is the worst failure
+          available here. A feed outage must surface as an error.
+        * **The provider must be licensed to redistribute.** Checked against
+          the provider itself, not assumed from a paid key — `yfinance` and the
+          synthetic generator both answer False and are refused.
+        * **Quiet by default**, because per-request INFO logging is noise at
+          any volume.
+
+        `allow_unlicensed=True` exists for staging against a research feed. It
+        is deliberately awkward to type.
+        """
+        from .data.providers import get_provider
+
+        cfg = cls()
+        cfg.data.ticker = ticker
+        cfg.data.provider = provider
+        cfg.data.allow_synthetic_fallback = False
+        cfg.verbose = False
+        cfg.analytics.save_snapshot = True
+
+        source = get_provider(cfg.data)
+        if not source.is_licensed_for_redistribution() and not allow_unlicensed:
+            raise PermissionError(
+                f"Provider {source.name!r} is not licensed for redistribution, so "
+                f"results from it must not be served to third parties.\n"
+                f"  - yfinance scrapes an undocumented endpoint and Yahoo's terms "
+                f"forbid commercial redistribution;\n"
+                f"  - the synthetic provider is not market data at all.\n"
+                f"Use a licensed vendor, set VOLSURFACE_REDISTRIBUTION_LICENSED=1 "
+                f"once your contract actually covers it, or pass "
+                f"allow_unlicensed=True for internal staging."
+            )
+        return cfg
 
     def with_ticker(self, ticker: str) -> "Config":
         """Convenience for notebooks: same config, different underlying."""

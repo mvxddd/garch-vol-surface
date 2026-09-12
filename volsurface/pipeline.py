@@ -296,6 +296,19 @@ def run_pipeline(cfg: Config | None = None, make_figures: bool = True,
         """Persist today's surface, then score it against its own past."""
         if res.surface is None:
             raise RuntimeError("No surface to snapshot.")
+
+        # Never write simulated data into a store meant to hold market history.
+        # The research default falls back to the synthetic generator when a feed
+        # fails, which keeps a notebook running but would put a fabricated row
+        # into the series every future z-score is measured against — and unlike
+        # a missing day, a fabricated one never washes out. Guarded here rather
+        # than in the caller so it protects every entry point.
+        if (res.prices is not None and res.prices.attrs.get("synthetic")
+                and cfg.data.provider != "synthetic"):
+            raise RuntimeError(
+                "run fell back to synthetic data — refusing to store it as "
+                "market history")
+
         store = SurfaceHistory(cfg.analytics.history_dir)
         row = snapshot(res.surface, cfg.data.ticker, vrp=res.vrp)
         store.append(row, cfg.data.ticker)
