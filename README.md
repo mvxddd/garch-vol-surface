@@ -117,6 +117,41 @@ than the tree's own discretisation error, so the difference there is numerical
 noise rather than signal. `convergence_check()` measures that error for your
 parameters instead of asking you to trust a step count.
 
+### Validated on single names
+
+The core study targets an index. Single names are the harder case — sparse
+chains, earnings inside one expiry but not the next, and vol levels three times
+higher — so the pipeline was run against them to find out what breaks.
+
+Nothing did. TSLA and NVDA both calibrated end to end with no calendar
+arbitrage and no butterfly violations, on 459 and 355 clean quotes against
+SPY's 1,756.
+
+The run turned up a measurable validation of an early design decision. Yahoo
+publishes its own implied vols alongside the quotes; at the money, 20-41 days
+out, those disagree with themselves:
+
+| | Puts | Calls | Gap |
+|---|---:|---:|---:|
+| Yahoo's own IVs | 38.83% | 41.72% | **2.89 vol points** |
+| This pipeline | 40.59% | 40.89% | **0.31 vol points** |
+
+A put and a call at the same strike and expiry imply the *same* volatility by
+put-call parity. A 2.9-point gap is not a market fact, it is a misspecified
+forward — the usual cause being a guessed dividend yield. Extracting the
+forward from the parity regression instead removes 90% of that gap. This is the
+0.3%-forward-error-becomes-1-vol-point-of-fake-skew argument, measured on a
+real chain rather than asserted.
+
+One genuine caveat the single-name runs exposed. Both showed a large *negative*
+volatility risk premium (TSLA −16 vol points, NVDA −16), and it is real, not a
+bug: TSLA realised 50% over the trailing month while the market prices 39.5%
+for the next one. But TSLA's GARCH persistence comes out at 0.9945 — a
+126-trading-day shock half-life — which makes its long-run volatility estimate
+fragile. The code warns only when persistence reaches 1.0; between about 0.99
+and 1.0 the forecast is still usable but the mean-reversion level should not be
+leaned on.
+
 ### Web interface — `app.py`
 
 `streamlit run app.py`: pick an underlying, press the button, and get all seven
