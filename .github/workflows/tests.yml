@@ -1,0 +1,65 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A new push to the same branch cancels the previous run: there is no value in
+# finishing a test run for a commit that has already been superseded.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests
+        # The suite runs entirely on the synthetic generator, so CI never
+        # touches a market data feed: no rate limits, no flakes on a holiday,
+        # and no dependence on what SPY happened to do overnight.
+        run: pytest -q
+
+      - name: Smoke-test the pipeline end to end
+        # Catches the class of breakage unit tests miss: a stage that raises
+        # only when wired to its neighbours, or a chart that fails to render.
+        run: |
+          python scripts/run_pipeline.py \
+            --provider synthetic --no-cache --no-walk-forward --quiet \
+            --out ci-outputs
+          test -f ci-outputs/reports/run_report.json
+          test "$(ls ci-outputs/figures/*.png | wc -l)" -ge 10
+
+      - name: Smoke-test the dashboard build
+        run: |
+          python scripts/build_dashboard.py --out ci-outputs --lang ru
+          test -f ci-outputs/figures/index.html
+
+      - name: Check the notebook is in sync with its source
+        # notebooks/*.ipynb is a build artefact. If someone edits the .py and
+        # forgets to rebuild, the Colab badge serves a stale notebook — so fail
+        # here rather than let the two drift apart silently.
+        run: |
+          python scripts/build_notebook.py
+          git diff --exit-code notebooks/ \
+            || (echo "::error::notebooks/*.ipynb is stale — run scripts/build_notebook.py and commit" && exit 1)
