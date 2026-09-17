@@ -1,0 +1,366 @@
+"""
+Quote cleaning, forward extraction and implied-volatility construction.
+
+This is the least glamorous and most valuable module in the project. A vol
+surface is only as good as the quotes underneath it, and a raw Yahoo chain is
+full of things that will wreck it: zero bids, 40%-wide spreads, options that
+have not traded in a week, strikes listed but never quoted, and deep-ITM
+contracts whose price carries no volatility information at all.
+
+The pipeline is a funnel, and every stage is counted and reported:
+
+    raw quotes
+      -> structural validity      (finite prices, sane strikes, live expiry)
+      -> liquidity filters        (bid, spread, open interest, volume)
+      -> per-expiry forward       (put-call parity regression)
+      -> OTM selection            (calls above F, puts below F)
+      -> IV inversion             (Black-76, vega-identifiable roots only)
+      -> smile-level sanity       (IV bounds, min quotes per expiry)
+"""
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+
+from ..config import CALENDAR_DAYS, OptionsConfig
+from ..models.american import early_exercise_premium, implied_vol_american
+from ..models.black_scholes import greeks, implied_forward_from_parity, implied_vol
+from ..utils import get_logger
+
+LOG = get_logger("volsurface.clean")
+
+
+class QuoteFunnel:
+    """Records how many quotes survive each filter — a data-quality audit."""
+
+    def __init__(self) -> None:
+        self.stages: list[tuple[str, int]] = []
+
+    def record(self, name: str, n: int) -> None:
+        self.stages.append((name, int(n)))
+
+    def to_frame(self) -> pd.DataFrame:
+        df = pd.DataFrame(self.stages, columns=["stage", "n_quotes"])
+        df["dropped"] = df["n_quotes"].shift(1).sub(df["n_quotes"]).fillna(0).astype(int)
+        start = df["n_quotes"].iloc[0] if len(df) else 0
+        df["pct_of_raw"] = (df["n_quotes"] / start * 100).round(1) if start else np.nan
+        return df
+
+    def log(self) -> None:
+        for stage, n in self.stages:
+            LOG.info("  %-28s %6d quotes", stage, n)
+
+
+def _mid_price(df: pd.DataFrame) -> pd.Series:
+    """
+    Mid where a two-sided market exists, last trade otherwise.
+
+    Never average a zero bid into the mid: a 0 x 0.05 market has a "mid" of
+    0.025 that no one will trade, and it produces an IV that is pure fiction.
+    """
+    bid, ask, last = df["bid"], df["ask"], df["last_price"]
+    two_sided = (bid > 0) & (ask > 0) & (ask >= bid)
+    mid = np.where(two_sided, (bid + ask) / 2.0, np.nan)
+    return pd.Series(np.where(np.isfinite(mid), mid, last), index=df.index)
+
+
+
+def _drop_stale_fallback_quotes(df: pd.DataFrame, cfg: OptionsConfig,
+                                funnel: QuoteFunnel) -> pd.DataFrame:
+    """
+    Drop quotes that are priced off an old trade.
+
+    The distinction that makes this surgical rather than destructive: a quote
+    with a live two-sided market is priced off **bid/ask**, which the feed
+    snapshots at fetch time. Its last *trade* may be days old without the price
+    being stale at all — market makers requote continuously without trading. On
+    a live SPY chain, 3,025 of 3,196 contracts are two-sided, and a naive
+    "last traded within a day" filter would throw away a quarter of them for
+    nothing.
+
+    The real risk is the other 5%: no two-sided market, so `_mid_price` falls
+    back to the last trade. On that same chain, 117 of those 171 quotes had last
+    traded more than a session earlier — genuinely stale prices being mixed into
+    a surface whose other expiries are current. That is what manufactures fake
+    calendar arbitrage.
+
+    Age is measured in **sessions**, ranked from the chain's own distinct trade
+    dates, rather than in hours. A snapshot taken on a Saturday sees Friday's
+    trades at 24-40 hours old, which is not stale — it is the most recent
+    session. Using the chain to define its own clock avoids needing a market
+    calendar, and works in any timezone.
+    """
+    if "last_trade" not in df.columns or df["last_trade"].isna().all():
+        funnel.record("last-trade freshness (no data)", len(df))
+        return df
+
+    last_trade = pd.to_datetime(df["last_trade"], errors="coerce", utc=True)
+    sessions = last_trade.dt.tz_convert("America/New_York").dt.date
+
+    # Age in business days back from the freshest trade in the chain. Counting
+    # *elapsed* sessions rather than ranking the distinct dates that happen to
+    # appear matters: a chain whose trades fall on days 0, 9 and 30 would rank
+    # the nine-day-old quote as "one session back" and keep it.
+    latest = sessions.dropna().max() if sessions.notna().any() else None
+    if latest is None:
+        funnel.record("last-trade freshness (no data)", len(df))
+        return df
+    age = sessions.map(
+        lambda d: float(np.busday_count(d, latest)) if pd.notna(d) else np.nan)
+    df = df.assign(quote_age_sessions=age)
+
+    two_sided = (df["bid"] > 0) & (df["ask"] > 0) & (df["ask"] >= df["bid"])
+    # Unknown age is not evidence of staleness; only drop what we can show.
+    too_old = age.notna() & (age > cfg.max_last_trade_age_sessions)
+    drop = too_old & ~two_sided
+
+    if drop.any():
+        LOG.info("Dropping %d quote(s) with no two-sided market whose last trade "
+                 "is more than %d session(s) old", int(drop.sum()),
+                 cfg.max_last_trade_age_sessions)
+    out = df[~drop]
+    funnel.record(f"fresh enough to price ({cfg.max_last_trade_age_sessions} "
+                  f"session fallback)", len(out))
+    return out
+
+
+def clean_option_chain(chain: pd.DataFrame, cfg: OptionsConfig,
+                       asof: pd.Timestamp | None = None,
+                       funnel: QuoteFunnel | None = None) -> pd.DataFrame:
+    """Structural + liquidity filtering. Returns a frame with mid/T/dte added."""
+    if chain.empty:
+        raise ValueError("Option chain is empty — nothing to clean.")
+    funnel = funnel or QuoteFunnel()
+    df = chain.copy()
+    funnel.record("raw quotes", len(df))
+
+    asof = pd.Timestamp(asof or df["asof"].iloc[0]).normalize()
+    df["expiry"] = pd.to_datetime(df["expiry"]).dt.normalize()
+    df["dte"] = (df["expiry"] - asof).dt.days
+    # Year fraction on a calendar basis: an option decays over weekends too,
+    # and every listed expiry convention is calendar-dated.
+    df["T"] = df["dte"] / CALENDAR_DAYS
+
+    for col in ("bid", "ask", "last_price", "strike", "volume", "open_interest"):
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df = df[(df["dte"] >= cfg.min_days_to_expiry) & (df["dte"] <= cfg.max_days_to_expiry)]
+    funnel.record("tenor window", len(df))
+
+    df = df[np.isfinite(df["strike"]) & (df["strike"] > 0)]
+    df["mid"] = _mid_price(df)
+    df = df[np.isfinite(df["mid"]) & (df["mid"] > 0)]
+    funnel.record("valid price & strike", len(df))
+
+    # De-duplicate: some feeds return the same contract twice (e.g. a mini and
+    # a standard listing sharing a strike). Keep the more liquid one.
+    df = (df.sort_values("open_interest", ascending=False)
+            .drop_duplicates(subset=["expiry", "strike", "option_type"], keep="first"))
+    funnel.record("de-duplicated", len(df))
+
+    two_sided = (df["bid"] > 0) & (df["ask"] > 0)
+    rel_spread = np.where(two_sided, (df["ask"] - df["bid"]) / df["mid"], np.nan)
+    df["rel_spread"] = rel_spread
+    df = df[(df["bid"] >= cfg.min_bid) | (~two_sided & (df["last_price"] > cfg.min_bid))]
+    funnel.record(f"bid >= {cfg.min_bid}", len(df))
+
+    df = df[~np.isfinite(df["rel_spread"]) | (df["rel_spread"] <= cfg.max_rel_spread)]
+    funnel.record(f"rel spread <= {cfg.max_rel_spread:.0%}", len(df))
+
+    df = df[(df["open_interest"].fillna(0) >= cfg.min_open_interest)
+            | (df["volume"].fillna(0) > 0)]
+    funnel.record(f"OI >= {cfg.min_open_interest} or traded", len(df))
+
+    df = df[df["volume"].fillna(0) >= cfg.min_volume]
+    funnel.record(f"volume >= {cfg.min_volume}", len(df))
+
+    df = _drop_stale_fallback_quotes(df, cfg, funnel)
+
+    if df.empty:
+        raise ValueError(
+            "Every quote was filtered out. Loosen OptionsConfig (min_bid, "
+            "max_rel_spread, min_open_interest) or check the data source."
+        )
+    df.attrs["funnel"] = funnel
+    return df.reset_index(drop=True)
+
+
+def compute_forwards(clean: pd.DataFrame, cfg: OptionsConfig,
+                     spot: float) -> pd.DataFrame:
+    """
+    Per-expiry implied forward from put-call parity, with a carry fallback.
+
+    Why bother: for a dividend-paying underlying, using S·e^{(r-q)T} with a
+    guessed `q` mislocates the ATM point. Because the smile is steep at the
+    money, an error of 0.3% in the forward shows up as ~1 vol point of fake
+    skew — larger than most of the effects we are trying to measure. Parity
+    reads the forward the market is actually using.
+    """
+    rows = []
+    for (expiry, T), grp in clean.groupby(["expiry", "T"]):
+        calls = grp[grp["option_type"] == "call"].set_index("strike")["mid"]
+        puts = grp[grp["option_type"] == "put"].set_index("strike")["mid"]
+        common = calls.index.intersection(puts.index)
+
+        fwd, r2, source = np.nan, 0.0, "carry"
+        if cfg.use_parity_forward and len(common) >= 3:
+            fwd, r2 = implied_forward_from_parity(
+                common.to_numpy(), calls.loc[common].to_numpy(),
+                puts.loc[common].to_numpy(), r=cfg.risk_free_rate, T=float(T),
+            )
+            source = "parity"
+
+        # Sanity gate: a parity forward more than 15% from the carry forward,
+        # or from a poorly-conditioned regression, is rejected.
+        q = cfg.dividend_yield if cfg.dividend_yield is not None else 0.0
+        carry_fwd = spot * np.exp((cfg.risk_free_rate - q) * float(T))
+        if (not np.isfinite(fwd)) or r2 < 0.99 or abs(fwd / carry_fwd - 1.0) > 0.15:
+            if source == "parity":
+                LOG.warning("Parity forward rejected for %s (F=%.2f, R2=%.4f) — "
+                            "falling back to carry forward %.2f",
+                            pd.Timestamp(expiry).date(), fwd, r2, carry_fwd)
+            fwd, source = carry_fwd, "carry"
+
+        rows.append({
+            "expiry": expiry, "T": float(T), "dte": round(float(T) * CALENDAR_DAYS),
+            "forward": float(fwd), "forward_source": source, "parity_r2": float(r2),
+            "n_parity_strikes": len(common),
+            # Implied dividend/borrow: what the market is charging to carry.
+            "implied_q": float(cfg.risk_free_rate
+                               - np.log(max(fwd, 1e-9) / spot) / max(float(T), 1e-9)),
+        })
+
+    fwd_df = pd.DataFrame(rows).sort_values("T").reset_index(drop=True)
+    n_parity = int((fwd_df["forward_source"] == "parity").sum())
+    LOG.info("Forwards: %d/%d expiries from put-call parity", n_parity, len(fwd_df))
+    return fwd_df
+
+
+def build_iv_quotes(clean: pd.DataFrame, forwards: pd.DataFrame,
+                    cfg: OptionsConfig,
+                    funnel: QuoteFunnel | None = None) -> pd.DataFrame:
+    """
+    Invert every surviving quote to an implied volatility and engineer the
+    features the surface layer consumes.
+
+    Only **out-of-the-money** options are kept (calls above the forward, puts
+    below). ITM options carry the same volatility information but far more of
+    their price is intrinsic value, so the same bid/ask in dollars translates
+    into a much larger error in vol. Every desk builds surfaces from OTM
+    quotes for exactly this reason.
+
+    Engineered features
+    -------------------
+    k              log-moneyness log(K/F) — the natural x-axis of a smile
+    total_variance IV^2 * T — the quantity that must be monotone in T
+    vega, delta    from Black-76; vega becomes the calibration weight
+    iv_bid/iv_ask  vol of the bid and the ask: the width of the vol market,
+                   which is what tells you whether a "signal" is tradeable
+    """
+    funnel = funnel or clean.attrs.get("funnel") or QuoteFunnel()
+    fwd_cols = ["expiry", "forward"] + (["implied_q"] if "implied_q" in forwards
+                                        else [])
+    df = clean.merge(forwards[fwd_cols], on="expiry", how="inner")
+    df = df[np.isfinite(df["forward"]) & (df["forward"] > 0)]
+
+    df["moneyness"] = df["strike"] / df["forward"]
+    lo, hi = cfg.moneyness_bounds
+    df = df[(df["moneyness"] >= lo) & (df["moneyness"] <= hi)]
+    funnel.record(f"moneyness in [{lo:.2f}, {hi:.2f}]", len(df))
+
+    is_call = df["option_type"].eq("call").to_numpy()
+    otm = np.where(is_call, df["strike"].to_numpy() >= df["forward"].to_numpy(),
+                   df["strike"].to_numpy() < df["forward"].to_numpy())
+    df = df[otm]
+    funnel.record("OTM only", len(df))
+    if df.empty:
+        raise ValueError("No OTM quotes survived filtering.")
+
+    F = df["forward"].to_numpy()
+    K = df["strike"].to_numpy()
+    T = df["T"].to_numpy()
+    call = df["option_type"].eq("call").to_numpy()
+    r = cfg.risk_free_rate
+
+    if cfg.exercise_style == "american":
+        # Price on the spot with the parity-implied dividend yield, so the only
+        # difference from the European path is early exercise and not a
+        # different dividend assumption.
+        spot_arr = df["spot"].to_numpy()
+        q_arr = (df["implied_q"].to_numpy() if "implied_q" in df
+                 else np.full(len(df), 0.0))
+        steps = cfg.binomial_steps
+        LOG.info("Inverting %d quotes under AMERICAN exercise "
+                 "(binomial, %d steps) — slower than the European path",
+                 len(df), steps)
+        inv = lambda px: implied_vol_american(  # noqa: E731
+            px, spot_arr, K, T, r=r, q=q_arr, is_call=call, steps=steps)
+        df["iv"] = inv(df["mid"].to_numpy())
+        with np.errstate(invalid="ignore"):
+            df["iv_bid"] = inv(df["bid"].to_numpy())
+            df["iv_ask"] = inv(df["ask"].to_numpy())
+        # What the choice of exercise style is actually worth, per quote.
+        df["early_exercise_premium"] = early_exercise_premium(
+            spot_arr, K, T, np.nan_to_num(df["iv"].to_numpy(), nan=0.2),
+            r=r, q=q_arr, is_call=call, steps=steps)
+    else:
+        df["iv"] = implied_vol(df["mid"].to_numpy(), F, K, T, r=r, is_call=call)
+        # Vol of the bid and the ask — the spread expressed in vol points.
+        with np.errstate(invalid="ignore"):
+            df["iv_bid"] = implied_vol(df["bid"].to_numpy(), F, K, T, r=r,
+                                       is_call=call)
+            df["iv_ask"] = implied_vol(df["ask"].to_numpy(), F, K, T, r=r,
+                                       is_call=call)
+
+    n_before = len(df)
+    df = df[np.isfinite(df["iv"])]
+    funnel.record("IV inverted", len(df))
+    if n_before and len(df) < n_before:
+        LOG.info("Dropped %d quotes with no identifiable IV", n_before - len(df))
+
+    df = df[(df["iv"] >= cfg.min_iv) & (df["iv"] <= cfg.max_iv)]
+    funnel.record(f"IV in [{cfg.min_iv:.0%}, {cfg.max_iv:.0%}]", len(df))
+
+    F, K, T = df["forward"].to_numpy(), df["strike"].to_numpy(), df["T"].to_numpy()
+    call = df["option_type"].eq("call").to_numpy()
+    g = greeks(F, K, T, df["iv"].to_numpy(), r=r, is_call=call)
+    df["vega"] = g["vega"]
+    df["delta"] = g["delta"]
+    df["forward_delta"] = g["forward_delta"]
+    df["gamma"] = g["gamma"]
+    df["k"] = np.log(K / F)
+    df["total_variance"] = df["iv"] ** 2 * df["T"]
+    df["iv_spread"] = df["iv_ask"] - df["iv_bid"]
+
+    # Drop expiries too sparse to support a five-parameter smile.
+    counts = df.groupby("expiry")["iv"].transform("size")
+    thin = counts < cfg.min_quotes_per_expiry
+    if thin.any():
+        dropped = df.loc[thin, "expiry"].dt.date.unique()
+        LOG.warning("Dropping %d thin expiries (< %d quotes): %s",
+                    len(dropped), cfg.min_quotes_per_expiry, list(dropped))
+    df = df[~thin]
+    funnel.record(f">= {cfg.min_quotes_per_expiry} quotes/expiry", len(df))
+
+    if df.empty:
+        raise ValueError("No expiry retained enough quotes to build a smile.")
+
+    out = df.sort_values(["T", "k"]).reset_index(drop=True)
+    out.attrs["funnel"] = funnel
+    LOG.info("Built %d IV quotes across %d expiries (IV range %.1f%%-%.1f%%)",
+             len(out), out["expiry"].nunique(), out["iv"].min() * 100,
+             out["iv"].max() * 100)
+    return out
+
+
+def prepare_quotes(chain: pd.DataFrame, cfg: OptionsConfig, spot: float,
+                   asof: pd.Timestamp | None = None
+                   ) -> tuple[pd.DataFrame, pd.DataFrame, QuoteFunnel]:
+    """End-to-end: raw chain -> (iv_quotes, forwards, funnel)."""
+    funnel = QuoteFunnel()
+    clean = clean_option_chain(chain, cfg, asof=asof, funnel=funnel)
+    forwards = compute_forwards(clean, cfg, spot=spot)
+    quotes = build_iv_quotes(clean, forwards, cfg, funnel=funnel)
+    forwards = forwards[forwards["expiry"].isin(quotes["expiry"].unique())]
+    funnel.log()
+    return quotes, forwards.reset_index(drop=True), funnel
