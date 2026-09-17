@@ -142,7 +142,7 @@ def synthetic_option_chain(
         k = np.log(strikes / F)
         iv = np.sqrt(np.maximum(_svi_total_variance(k, a, b, rho, m, sig), 1e-10) / T)
 
-        for K, sigma_true in zip(strikes, iv):
+        for K, sigma_true in zip(strikes, iv, strict=True):
             for is_call in (True, False):
                 mid = float(black76_price(F, K, T, sigma_true, r=r, is_call=is_call))
                 if mid < 0.02:                     # exchanges do not quote these

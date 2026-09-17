@@ -24,8 +24,7 @@ import pandas as pd
 
 from ..config import CALENDAR_DAYS, OptionsConfig
 from ..models.american import early_exercise_premium, implied_vol_american
-from ..models.black_scholes import (greeks, implied_forward_from_parity,
-                                    implied_vol)
+from ..models.black_scholes import greeks, implied_forward_from_parity, implied_vol
 from ..utils import get_logger
 
 LOG = get_logger("volsurface.clean")
@@ -223,9 +222,9 @@ def compute_forwards(clean: pd.DataFrame, cfg: OptionsConfig,
             fwd, source = carry_fwd, "carry"
 
         rows.append({
-            "expiry": expiry, "T": float(T), "dte": int(round(float(T) * CALENDAR_DAYS)),
+            "expiry": expiry, "T": float(T), "dte": round(float(T) * CALENDAR_DAYS),
             "forward": float(fwd), "forward_source": source, "parity_r2": float(r2),
-            "n_parity_strikes": int(len(common)),
+            "n_parity_strikes": len(common),
             # Implied dividend/borrow: what the market is charging to carry.
             "implied_q": float(cfg.risk_free_rate
                                - np.log(max(fwd, 1e-9) / spot) / max(float(T), 1e-9)),

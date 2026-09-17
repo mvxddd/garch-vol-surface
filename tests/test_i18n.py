@@ -52,7 +52,7 @@ def surface():
 # --------------------------------------------------------------------------- #
 def test_every_language_covers_every_key():
     """A partially translated language silently ships English text."""
-    assert i18n.coverage() == {lang: 100.0 for lang in i18n.LANGUAGES}
+    assert i18n.coverage() == dict.fromkeys(i18n.LANGUAGES, 100.0)
 
 
 def test_no_language_has_stray_keys():

@@ -17,11 +17,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from volsurface import Config                                  # noqa: E402
-from volsurface.batch import (DEFAULT_UNIVERSE, cross_section,  # noqa: E402
-                              run_universe)
-from volsurface.history import SurfaceHistory                   # noqa: E402
-from volsurface.utils import get_logger                         # noqa: E402
+from volsurface import Config
+from volsurface.batch import DEFAULT_UNIVERSE, cross_section, run_universe
+from volsurface.history import SurfaceHistory
+from volsurface.utils import get_logger
 
 
 def build_parser() -> argparse.ArgumentParser:

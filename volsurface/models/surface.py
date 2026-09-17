@@ -16,8 +16,9 @@ free calendar spreads between listed expiries.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol, Sequence
+from typing import Protocol
 
 import numpy as np
 import pandas as pd
@@ -87,7 +88,7 @@ def _fit_spline_slice(k: np.ndarray, iv: np.ndarray, T: float,
     fitted = np.sqrt(np.maximum(spl(k_u), 1e-12) / T)
     rmse = float(np.sqrt(np.mean((fitted - np.sqrt(w_u / T)) ** 2)))
     return SplineSlice(T=float(T), knots_k=k_u, _spline=spl, rmse_vol=rmse,
-                       n_quotes=int(len(k_s)))
+                       n_quotes=len(k_s))
 
 
 # --------------------------------------------------------------------------- #
@@ -274,7 +275,7 @@ class VolSurface:
         rows = []
         for s in self.slices:
             row = s.as_dict() if hasattr(s, "as_dict") else {"T": s.T}
-            row["days"] = int(round(s.T * CALENDAR_DAYS))
+            row["days"] = round(s.T * CALENDAR_DAYS)
             row["forward"] = float(self.forward(s.T))
             rows.append(row)
         cols_first = ["days", "T", "forward", "atm_vol", "n_quotes", "rmse_vol"]
@@ -305,7 +306,7 @@ class VolSurface:
         base = np.linspace(-0.3, 0.2, 61)
         support = self.quote_support()
         violations, worst = [], 0.0
-        for near, far in zip(self.slices[:-1], self.slices[1:]):
+        for near, far in zip(self.slices[:-1], self.slices[1:], strict=True):
             grid = base
             ns, fs = support.get(near.T), support.get(far.T)
             if ns and fs:

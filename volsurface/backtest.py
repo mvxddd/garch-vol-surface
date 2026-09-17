@@ -236,13 +236,13 @@ def compare_strategies(implied_vol: pd.Series, returns: pd.Series,
     premium add anything over simply always being short?" gets an answer
     rather than an opinion.
     """
-    runs = {"always short": dict(direction=-1),
-            "always long": dict(direction=+1)}
+    runs = {"always short": {"direction": -1},
+            "always long": {"direction": +1}}
     if vrp_zscore is not None:
-        runs["short when VRP rich (z>0.5)"] = dict(
-            direction=-1, signal=vrp_zscore, signal_threshold=0.5)
-        runs["short when VRP very rich (z>1)"] = dict(
-            direction=-1, signal=vrp_zscore, signal_threshold=1.0)
+        runs["short when VRP rich (z>0.5)"] = {
+            "direction": -1, "signal": vrp_zscore, "signal_threshold": 0.5}
+        runs["short when VRP very rich (z>1)"] = {
+            "direction": -1, "signal": vrp_zscore, "signal_threshold": 1.0}
 
     rows = []
     for name, spec in runs.items():
@@ -302,7 +302,7 @@ def signal_backtest(history: pd.DataFrame, returns: pd.Series,
     direction_series = -np.sign(signal)
     costs = costs or CostModel()
     r = pd.Series(returns).dropna().astype(float)
-    arr, dates = r.to_numpy(), r.index
+    arr = r.to_numpy()
 
     rows = []
     for date, side in direction_series.items():

@@ -33,17 +33,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 try:
     import streamlit as st
 except ImportError:  # pragma: no cover
-    raise SystemExit("Streamlit is not installed.  pip install streamlit")
+    raise SystemExit(
+        "Streamlit is not installed.  pip install streamlit") from None
 
-from volsurface import Config, run_pipeline                       # noqa: E402
-from volsurface import portfolio as PF                            # noqa: E402
-from volsurface.backtest import (CostModel, compare_strategies,   # noqa: E402
-                                 short_straddle_backtest)
-from volsurface.data import load_prices                           # noqa: E402
-from volsurface.data.prices import (compute_returns, load_vol_index,  # noqa: E402
-                                    synthetic_vol_index)
-from volsurface.i18n import set_language, t                       # noqa: E402
-from volsurface.viz import plots as P, use_theme                  # noqa: E402
+from volsurface import Config, run_pipeline
+from volsurface import portfolio as PF
+from volsurface.backtest import (
+    CostModel,
+    compare_strategies,
+    short_straddle_backtest,
+)
+from volsurface.data import load_prices
+from volsurface.data.prices import (
+    compute_returns,
+    load_vol_index,
+    synthetic_vol_index,
+)
+from volsurface.i18n import set_language, t
+from volsurface.viz import plots as P
+from volsurface.viz import use_theme
 
 UI = {
     "en": {
@@ -187,7 +195,7 @@ if head.get("synthetic_data"):
 
 cols = st.columns(5)
 for col, key in zip(cols, ["spot", "atm_30d_iv", "vrp_vol_points",
-                           "n_quotes", "n_anomalies"]):
+                           "n_quotes", "n_anomalies"], strict=True):
     value = head.get(key)
     if value is None:
         continue
@@ -262,7 +270,7 @@ with tabs[4]:
             totals = report["totals"]
             mcols = st.columns(4)
             for col, key in zip(mcols, ["delta_shares", "vega_per_vol_point",
-                                        "theta_per_day", "value"]):
+                                        "theta_per_day", "value"], strict=True):
                 col.metric(t(f"pf.{key}"), f"{totals.get(key, 0):,.0f}")
             st.dataframe(report["positions"].round(3), use_container_width=True)
             _show(P.plot_vega_ladder(report["vega_by_tenor"], by="tenor"))

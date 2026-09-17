@@ -7,10 +7,10 @@ import pytest
 
 from volsurface import backtest as BT
 from volsurface import portfolio as PF
-from volsurface.config import OptionsConfig, SurfaceConfig, TRADING_DAYS
+from volsurface.config import TRADING_DAYS, OptionsConfig, SurfaceConfig
 from volsurface.data.clean import prepare_quotes
-from volsurface.data.synthetic import synthetic_option_chain, synthetic_prices
 from volsurface.data.prices import compute_returns
+from volsurface.data.synthetic import synthetic_option_chain, synthetic_prices
 from volsurface.history import SurfaceHistory, historical_anomalies, snapshot
 from volsurface.models.surface import build_surface
 
@@ -42,7 +42,7 @@ def test_position_validation():
 
 def test_long_call_greeks_have_the_right_signs(surface):
     T = float(surface.maturities[2])
-    expiry = ASOF + pd.Timedelta(days=int(round(T * 365)))
+    expiry = ASOF + pd.Timedelta(days=round(T * 365))
     book = PF.Portfolio([PF.Position("call", 1, SPOT, expiry)])
     row = PF.price_portfolio(book, surface).iloc[0]
     assert row["price"] > 0
@@ -53,7 +53,7 @@ def test_long_call_greeks_have_the_right_signs(surface):
 
 def test_short_straddle_is_short_vol_and_short_gamma(surface):
     T = float(surface.maturities[1])
-    expiry = ASOF + pd.Timedelta(days=int(round(T * 365)))
+    expiry = ASOF + pd.Timedelta(days=round(T * 365))
     book = PF.Portfolio([PF.Position("call", -1, SPOT, expiry),
                          PF.Position("put", -1, SPOT, expiry)])
     totals = PF.aggregate_risk(PF.price_portfolio(book, surface))
@@ -145,7 +145,7 @@ def test_zscores_flag_an_injected_shock(tmp_path, surface):
     store = SurfaceHistory(tmp_path)
     base = snapshot(surface, "TEST", garch_vol_30d=0.14)
     rng = np.random.default_rng(0)
-    for i, date in enumerate(pd.bdate_range("2026-01-01", periods=50)):
+    for _i, date in enumerate(pd.bdate_range("2026-01-01", periods=50)):
         row = base.copy()
         row["date"] = date
         row["atm_30d"] = float(base["atm_30d"]) + rng.normal(0, 0.002)

@@ -80,9 +80,7 @@ def forecast_metrics(forecast_vol, realized_vol) -> dict[str, float]:
     """Full evaluation panel for one (model, horizon) pair."""
     f, a = _clean_pair(forecast_vol, realized_vol)
     if f.size == 0:
-        return {k: np.nan for k in
-                ("rmse", "mae", "mape", "bias", "qlike", "r2", "beta",
-                 "alpha", "t_beta_eq_1", "corr", "n")}
+        return dict.fromkeys(("rmse", "mae", "mape", "bias", "qlike", "r2", "beta", "alpha", "t_beta_eq_1", "corr", "n"), np.nan)
 
     err = f - a
     mz = mincer_zarnowitz(f, a)

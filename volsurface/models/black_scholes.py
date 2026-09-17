@@ -21,7 +21,8 @@ import numpy as np
 try:                                    # scipy's ndtr is ~5x faster than erf-loops
     from scipy.special import ndtr as _norm_cdf
 except ImportError:                     # pragma: no cover - scipy is a hard dep
-    from math import erf, sqrt as _sqrt
+    from math import erf
+    from math import sqrt as _sqrt
 
     def _norm_cdf(x):                   # type: ignore[misc]
         x = np.asarray(x, dtype=float)

@@ -18,9 +18,9 @@ from pathlib import Path
 # Allow running from a checkout without installing the package.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from volsurface import Config, run_pipeline                     # noqa: E402
-from volsurface.i18n import LANGUAGES, set_language, t           # noqa: E402
-from volsurface.utils import get_logger                          # noqa: E402
+from volsurface import Config, run_pipeline
+from volsurface.i18n import LANGUAGES, set_language, t
+from volsurface.utils import get_logger
 
 
 def build_parser() -> argparse.ArgumentParser:

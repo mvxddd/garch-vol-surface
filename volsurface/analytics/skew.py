@@ -49,7 +49,7 @@ def skew_metrics(surface, delta: float = 0.25) -> pd.DataFrame:
         curv = float((surface.iv(eps, T) - 2 * atm + surface.iv(-eps, T)) / eps ** 2)
 
         rows.append({
-            "days": int(round(float(T) * CALENDAR_DAYS)),
+            "days": round(float(T) * CALENDAR_DAYS),
             "T": float(T),
             "forward": float(surface.forward(T)),
             "atm_iv": atm,
@@ -157,7 +157,7 @@ def detect_anomalies(surface, cfg: AnalyticsConfig | None = None,
     for v in cal.get("violations", []):
         findings.append({
             "category": "calendar_arbitrage",
-            "tenor_days": int(round(v["T_far"] * CALENDAR_DAYS)),
+            "tenor_days": round(v["T_far"] * CALENDAR_DAYS),
             "metric": "total variance decreasing in T",
             "value": -v["max_depth_total_var"],
             "benchmark": 0.0,
@@ -177,7 +177,7 @@ def detect_anomalies(surface, cfg: AnalyticsConfig | None = None,
             continue
         findings.append({
             "category": "butterfly_arbitrage",
-            "tenor_days": int(round(s.T * CALENDAR_DAYS)),
+            "tenor_days": round(s.T * CALENDAR_DAYS),
             "metric": "min Durrleman g(k)",
             "value": float(getattr(s, "min_durrleman_g", np.nan)),
             "benchmark": 0.0,

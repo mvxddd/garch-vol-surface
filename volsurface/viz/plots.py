@@ -19,6 +19,7 @@ that are applied consistently rather than re-decided per chart:
 """
 from __future__ import annotations
 
+import itertools
 from pathlib import Path
 
 import numpy as np
@@ -238,7 +239,10 @@ def plot_surface_heatmap(surface, n_k: int = 121, n_t: int = 81,
     ax.text(0.002, days.max(), " " + t("label.forward_atm"), color=th.surface,
             fontsize=8.5, va="top", ha="left", zorder=6)
     ax.set_xlim(k_grid.min(), k_grid.max())
-    ax.set_ylim(days.min(), days.max())
+    # A single calibrated expiry gives min == max, which matplotlib flags as a
+    # singular transform and silently expands. Give it a real band instead.
+    lo, hi = float(days.min()), float(days.max())
+    ax.set_ylim(lo, hi) if hi > lo else ax.set_ylim(lo - 1, hi + 1)
     cbar = fig.colorbar(mesh, ax=ax, pad=0.015)
     cbar.set_label(t("axis.implied_vol_pct"), color=th.ink_secondary, fontsize=9.5)
     cbar.outline.set_visible(False)
@@ -292,7 +296,7 @@ def plot_smile_grid(surface, max_panels: int = 12, path: str | Path | None = Non
 
         rmse = getattr(sl, "rmse_vol", np.nan)
         ax.set_title(t("smile.panel_title",
-                       days=int(round(sl.T * CALENDAR_DAYS)),
+                       days=round(sl.T * CALENDAR_DAYS),
                        atm=float(sl.implied_vol(0.0)) * 100),
                      loc="left", fontsize=10, color=th.ink, fontweight="bold")
         ax.text(0.98, 0.94, t("smile.fit_rmse", rmse=rmse * 100, n=len(sub)),
@@ -309,8 +313,8 @@ def plot_smile_grid(surface, max_panels: int = 12, path: str | Path | None = Non
         axes[j // ncols][j % ncols].axis("off")
 
     handles, labels = axes[0][0].get_legend_handles_labels()
-    fig.legend(handles + [plt.Line2D([], [], color=th.axis, lw=1.6)],
-               labels + [t("smile.bidask")], loc="upper right",
+    fig.legend([*handles, plt.Line2D([], [], color=th.axis, lw=1.6)],
+               [*labels, t("smile.bidask")], loc="upper right",
                bbox_to_anchor=(0.995, 1.0), ncol=3, frameon=False,
                fontsize=9, labelcolor=th.ink_secondary)
     fig.suptitle(t("smile.grid_title"),
@@ -337,10 +341,10 @@ def plot_smile_overlay(surface, n_tenors: int = 5, path: str | Path | None = Non
 
     fig, ax = plt.subplots(figsize=(9, 5.2))
     k = np.linspace(-0.30, 0.20, 250)
-    for T, c in zip(pick, colors):
+    for T, c in zip(pick, colors, strict=True):
         iv = np.asarray(surface.iv(k, float(T))) * 100
         ax.plot(k, iv, color=c, lw=2.0)
-        _label_line_end(ax, k, iv, f"{int(round(float(T)*CALENDAR_DAYS))}"
+        _label_line_end(ax, k, iv, f"{round(float(T)*CALENDAR_DAYS)}"
                         + t("unit.days_suffix"), c)
 
     ax.axvline(0, color=th.axis, lw=0.9, ls=":")
@@ -477,10 +481,10 @@ def plot_risk_neutral_density(surface, n_tenors: int = 5,
 
     fig, ax = plt.subplots(figsize=(9, 5.0))
     k = np.linspace(-0.55, 0.40, 500)
-    for sl, c in zip(pick, colors):
+    for sl, c in zip(pick, colors, strict=True):
         d = np.asarray(sl.risk_neutral_density(k))
         ax.plot(k, d, color=c, lw=2.0)
-        _label_line_end(ax, k, d, f"{int(round(sl.T * CALENDAR_DAYS))}"
+        _label_line_end(ax, k, d, f"{round(sl.T * CALENDAR_DAYS)}"
                         + t("unit.days_suffix"), c)
     ax.axhline(0, color=th.axis, lw=1.0)
     ax.axvline(0, color=th.axis, lw=0.9, ls=":")
@@ -665,7 +669,7 @@ def plot_vrp_term(vrp_df: pd.DataFrame, path: str | Path | None = None):
     import matplotlib.pyplot as plt
 
     th = TH.active()
-    neg, mid, pos = th.diverging
+    neg, _mid, pos = th.diverging
     fig, ax = plt.subplots(figsize=(9, 4.6))
     x = np.arange(len(vrp_df))
     vals = vrp_df["vrp_vol_points"].to_numpy()
@@ -677,7 +681,8 @@ def plot_vrp_term(vrp_df: pd.DataFrame, path: str | Path | None = None):
     ax.set_xticks(x)
     ax.set_xticklabels([t("vrp.tick", days=int(d), iv=iv * 100, g=g * 100)
                         for d, iv, g in zip(vrp_df["horizon_days"],
-                                            vrp_df["atm_iv"], vrp_df["garch_vol"])],
+                                            vrp_df["atm_iv"], vrp_df["garch_vol"],
+                                            strict=True)],
                        fontsize=8.5)
     ax.grid(axis="y")
     _titles(ax, t("vrp.term_title"), t("vrp.term_subtitle"),
@@ -696,7 +701,7 @@ def plot_vrp_history(hist: pd.DataFrame, horizon_days: int = 21,
     import matplotlib.pyplot as plt
 
     th = TH.active()
-    neg, mid, pos = th.diverging
+    neg, _mid, pos = th.diverging
     df = hist.dropna(subset=["realized_vol_fwd"])
     fig, axes = plt.subplots(2, 1, figsize=(11, 6.6), sharex=True,
                              gridspec_kw={"height_ratios": [1.4, 1]})
@@ -742,7 +747,7 @@ def plot_quote_funnel(funnel_df: pd.DataFrame, path: str | Path | None = None):
     bars = ax.barh(df["stage"], df["n_quotes"], height=0.62,
                    color=th.categorical[0], edgecolor=th.surface, linewidth=1.2)
     ax.bar_label(bars, labels=[f"{int(n):,}  ({p:.0f}%)" for n, p in
-                               zip(df["n_quotes"], df["pct_of_raw"])],
+                               zip(df["n_quotes"], df["pct_of_raw"], strict=True)],
                  padding=4, fontsize=8.6, color=th.ink_secondary)
     ax.grid(axis="x")
     ax.set_axisbelow(True)
@@ -819,7 +824,7 @@ def plot_anomalies(anomalies: pd.DataFrame, path: str | Path | None = None):
     ax.bar_label(bars, labels=[
         t("anom.z", sev=t(f"sev.{s.lower()}"), z=z) if np.isfinite(z)
         else t("anom.hard", sev=t(f"sev.{s.lower()}"))
-        for s, z in zip(df["severity"], df["z_score"])],
+        for s, z in zip(df["severity"], df["z_score"], strict=True)],
                  padding=3, fontsize=8.4, color=th.ink_secondary)
     ax.grid(axis="x")
     ax.set_axisbelow(True)
@@ -885,7 +890,7 @@ def plot_stress_grid(grid: pd.DataFrame, path: str | Path | None = None):
 
     fig, ax = plt.subplots(figsize=(1.15 * grid.shape[1] + 3.4,
                                     0.62 * grid.shape[0] + 3.0))
-    im = ax.imshow(values, cmap=cmap, norm=norm, aspect="auto")
+    ax.imshow(values, cmap=cmap, norm=norm, aspect="auto")
 
     ax.set_xticks(range(grid.shape[1]))
     ax.set_xticklabels([f"{c:+.0%}" for c in grid.columns])
@@ -973,7 +978,7 @@ def plot_trade_distribution(result, path: str | Path | None = None):
 
     fig, ax = plt.subplots(figsize=(9.5, 4.8))
     bins = np.histogram_bin_edges(pnl, bins=min(40, max(10, pnl.size // 4)))
-    for lo, hi in zip(bins[:-1], bins[1:]):
+    for lo, hi in itertools.pairwise(bins):
         sel = pnl[(pnl >= lo) & (pnl < hi)]
         if sel.size:
             ax.bar((lo + hi) / 2, sel.size, width=(hi - lo) * 0.92,
@@ -1009,7 +1014,7 @@ def plot_strategy_comparison(table: pd.DataFrame, path: str | Path | None = None
                    edgecolor=th.surface, linewidth=1.2)
     ax.bar_label(bars, labels=[t("bt.bar_label", sharpe=v, n=int(n))
                                for v, n in zip(df["sharpe_annualised"],
-                                               df["n_trades"])],
+                                               df["n_trades"], strict=True)],
                  padding=3, fontsize=9, color=th.ink_secondary)
     ax.axvline(0, color=th.axis, lw=1.0)
     ax.grid(axis="x")

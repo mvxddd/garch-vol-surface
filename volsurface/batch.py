@@ -29,8 +29,8 @@ anomaly screen z-scores against is the one a service would read from.
 from __future__ import annotations
 
 import time
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Iterable, Sequence
 
 import pandas as pd
 

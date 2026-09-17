@@ -94,7 +94,7 @@ class PipelineResult:
             out["best_oos_qlike"] = round(float(best["qlike"]), 4)
         if self.surface is not None:
             out["n_expiries"] = len(self.surface.slices)
-            out["n_quotes"] = 0 if self.quotes is None else int(len(self.quotes))
+            out["n_quotes"] = 0 if self.quotes is None else len(self.quotes)
             out["atm_30d_iv"] = round(float(self.surface.atm_vol(30 / 365)), 4)
             cal = self.surface.calendar_arbitrage()
             out["calendar_arbitrage"] = bool(cal["has_arbitrage"])
@@ -103,7 +103,7 @@ class PipelineResult:
             out["vrp_vol_points"] = round(float(row["vrp_vol_points"]), 2)
             out["vrp_signal"] = row["signal"]
         if self.anomalies is not None:
-            out["n_anomalies"] = int(len(self.anomalies))
+            out["n_anomalies"] = len(self.anomalies)
         if self.history_summary:
             out["n_snapshots"] = self.history_summary.get("n_snapshots", 0)
         return out

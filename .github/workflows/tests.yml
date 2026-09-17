@@ -33,12 +33,18 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install ruff pytest-cov
+
+      - name: Lint
+        # Correctness rules, not style opinions. This caught a VOL_INDEX_MAP
+        # defined in two modules at once, which agreed only by luck.
+        run: ruff check .
 
       - name: Run tests
         # The suite runs entirely on the synthetic generator, so CI never
         # touches a market data feed: no rate limits, no flakes on a holiday,
         # and no dependence on what SPY happened to do overnight.
-        run: pytest -q
+        run: pytest -q --cov=volsurface --cov-report=term --cov-fail-under=80
 
       - name: Smoke-test the pipeline end to end
         # Catches the class of breakage unit tests miss: a stage that raises

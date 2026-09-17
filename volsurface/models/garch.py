@@ -14,8 +14,9 @@ Conventions used everywhere in this module
 from __future__ import annotations
 
 import warnings
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any
 
 import numpy as np
 import pandas as pd

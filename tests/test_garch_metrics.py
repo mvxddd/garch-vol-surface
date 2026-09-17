@@ -2,14 +2,17 @@
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 import pytest
 
-from volsurface.analytics.metrics import (diebold_mariano, forecast_metrics,
-                                          mincer_zarnowitz, qlike)
+from volsurface.analytics.metrics import (
+    diebold_mariano,
+    forecast_metrics,
+    mincer_zarnowitz,
+    qlike,
+)
 from volsurface.config import GarchConfig
-from volsurface.data.synthetic import synthetic_prices
 from volsurface.data.prices import compute_returns
+from volsurface.data.synthetic import synthetic_prices
 from volsurface.models import garch as G
 
 pytest.importorskip("arch")

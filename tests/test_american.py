@@ -8,11 +8,13 @@ import pytest
 from volsurface.config import OptionsConfig
 from volsurface.data.clean import prepare_quotes
 from volsurface.data.synthetic import synthetic_option_chain
-from volsurface.models.american import (binomial_price, convergence_check,
-                                        early_exercise_premium,
-                                        implied_vol_american)
-from volsurface.models.black_scholes import (black76_price, bs_price_spot,
-                                             implied_vol)
+from volsurface.models.american import (
+    binomial_price,
+    convergence_check,
+    early_exercise_premium,
+    implied_vol_american,
+)
+from volsurface.models.black_scholes import black76_price, implied_vol
 
 
 # --------------------------------------------------------------------------- #

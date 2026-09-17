@@ -5,6 +5,10 @@ venv/
 .env
 .ipynb_checkpoints/
 .pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.ruff_cache/
 .DS_Store
 
 # Run artefacts — regenerate with scripts/run_pipeline.py

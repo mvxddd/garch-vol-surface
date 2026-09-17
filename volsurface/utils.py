@@ -6,9 +6,10 @@ import hashlib
 import json
 import logging
 import time
+from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Iterable, TypeVar
+from typing import Any, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -65,7 +66,7 @@ def retry(
             for i in range(1, attempts + 1):
                 try:
                     return fn(*args, **kwargs)
-                except exceptions as exc:            # noqa: PERF203
+                except exceptions as exc:
                     last = exc
                     if i == attempts:
                         break

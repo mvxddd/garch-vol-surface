@@ -68,13 +68,13 @@ if root is None:
         root = target
     else:
         try:
-            import volsurface  # noqa: F401  (installed, e.g. pip install -e .)
+            import volsurface
         except ImportError:
             raise SystemExit(
                 "Could not find the `volsurface` package.\n\n"
                 f"Clone it:  git clone {REPO_URL}\n"
                 "then run this notebook from inside the project folder."
-            )
+            ) from None
 if root is not None and str(root) not in sys.path:
     sys.path.insert(0, str(root))
 

@@ -7,8 +7,11 @@ import pytest
 
 from volsurface.config import OptionsConfig, SurfaceConfig
 from volsurface.data.clean import prepare_quotes
-from volsurface.data.synthetic import (_svi_slice_params, _svi_total_variance,
-                                       synthetic_option_chain)
+from volsurface.data.synthetic import (
+    _svi_slice_params,
+    _svi_total_variance,
+    synthetic_option_chain,
+)
 from volsurface.models.surface import build_surface
 from volsurface.models.svi import check_calendar_arbitrage, fit_svi
 
@@ -96,7 +99,7 @@ def test_delta_strike_inversion_is_self_consistent(surface):
 
 
 def test_grid_is_finite_and_ordered(surface):
-    k, t, iv = surface.grid(n_k=41, n_t=21)
+    k, _t, iv = surface.grid(n_k=41, n_t=21)
     assert iv.shape == (21, 41)
     assert np.all(np.isfinite(iv))
     # Equity skew: downside strikes are bid over the forward at every maturity.

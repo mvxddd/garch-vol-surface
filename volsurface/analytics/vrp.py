@@ -65,7 +65,7 @@ def current_vrp(surface, garch_term_structure: pd.DataFrame,
         atm_iv = float(surface.atm_vol(T))
         rows.append({
             "horizon_days": h,
-            "calendar_days": int(round(T * CALENDAR_DAYS)),
+            "calendar_days": round(T * CALENDAR_DAYS),
             "T": T,
             "atm_iv": atm_iv,
             "garch_vol": garch_vol,

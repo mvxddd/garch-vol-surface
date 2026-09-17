@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.4"]
+dev = ["pytest>=7.4", "pytest-cov>=4.1", "ruff>=0.6"]
 app = ["streamlit>=1.30"]
 
 [project.scripts]
@@ -42,3 +42,35 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = ["slow: end-to-end runs (deselect with -m 'not slow')"]
 filterwarnings = ["ignore::FutureWarning", "ignore::RuntimeWarning"]
+
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+# *.ipynb is generated from the .py source by scripts/build_notebook.py;
+# linting the artefact just double-reports whatever the source says.
+extend-exclude = ["outputs", "outputs_live", ".venv", "*.ipynb"]
+
+[tool.ruff.lint]
+# Correctness and cruft, not style opinions. The point of the linter here is to
+# find the dead import and the unused variable that a reader would trip over —
+# it already found a VOL_INDEX_MAP defined in two modules at once, which agreed
+# only by luck.
+select = ["E", "F", "W", "I", "UP", "B", "C4", "RUF"]
+ignore = [
+    "E501",    # line length: the formatter's job, and the prose in docstrings
+               # is deliberately wrapped for reading rather than for a ruler
+    "B008",    # function call in argument default — dataclass field() is fine
+    "RUF001",  # "ambiguous" Unicode: the Russian catalogue and the maths
+    "RUF002",  # symbols (σ, ∂, Δ, ≈) are intentional, not homoglyph typos
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The notebook source is executed by Jupyter, where `display` is a builtin.
+"notebooks/*.py" = ["F821", "E402"]
+# Tests deliberately import inside functions to keep collection cheap.
+"tests/*.py" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["volsurface"]

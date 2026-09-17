@@ -6,7 +6,7 @@ import pytest
 
 from volsurface import Config
 from volsurface.batch import BatchResult, cross_section, run_universe
-from volsurface.config import DataConfig, OptionsConfig
+from volsurface.config import DataConfig
 from volsurface.data import providers as PV
 from volsurface.history import SurfaceHistory
 

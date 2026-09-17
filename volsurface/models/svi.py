@@ -24,6 +24,7 @@ Parameter roles (useful when reading a calibration table):
 """
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass
 
 import numpy as np
@@ -153,7 +154,7 @@ def _residuals(theta, k, w_obs, weights, T, k_dense, penalty):
     `penalty` is escalated by the caller until the constraints actually bind —
     a fixed weight either distorts a clean fit or fails to bite on a messy one.
     """
-    a, b, rho, m, sigma = theta
+    a, b, rho, _m, sigma = theta
     res = weights * (_svi_w(theta, k) - w_obs)
 
     min_var = a + b * sigma * np.sqrt(max(1.0 - rho ** 2, 0.0))
@@ -331,7 +332,7 @@ def check_calendar_arbitrage(slices: list[SVIParams],
 
     base_grid = np.linspace(-0.35, 0.25, 121) if k_grid is None else np.asarray(k_grid)
     violations, worst = [], 0.0
-    for near, far in zip(ordered[:-1], ordered[1:]):
+    for near, far in itertools.pairwise(ordered):
         grid = base_grid
         if support:
             near_span, far_span = support.get(near.T), support.get(far.T)

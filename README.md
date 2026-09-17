@@ -20,7 +20,8 @@ python scripts/run_pipeline.py --provider synthetic  # no network required
 python scripts/run_pipeline.py --lang ru             # charts and CLI in Russian
 python scripts/run_pipeline.py --snapshot            # also save to the history store
 streamlit run app.py                                 # interactive web interface
-pytest -q                                            # 109 tests, ~12 seconds
+pytest -q                                            # 156 tests, 86% coverage
+ruff check .                                         # lint
 ```
 
 Or [open the notebook in Colab](https://colab.research.google.com/github/mvxddd/garch-vol-surface/blob/main/notebooks/garch_iv_surface_colab.ipynb) — cell 1 installs the one
@@ -441,7 +442,7 @@ garch-vol-surface/
 │   ├── run_pipeline.py         # CLI
 │   ├── build_dashboard.py      # figures + report → one HTML page
 │   └── build_notebook.py       # .py → .ipynb
-├── tests/                      # 109 tests
+├── tests/                      # 156 tests
 └── outputs/
     ├── figures/                # 15 PNG + 1 interactive HTML
     └── reports/                # 15 CSV tables + run_report.json
@@ -699,7 +700,7 @@ over 1,906 observations.
 - **15 figures** including an interactive 3-D surface.
 - **15 CSV tables + a JSON run report** capturing config, per-stage status and
   headline results — so any figure can be traced back to the run that made it.
-- **109 tests** covering parity, Greeks, inversion round-trips, arbitrage
+- **156 tests** covering parity, Greeks, inversion round-trips, arbitrage
   freedom, look-ahead bias, and graceful degradation when a feed dies.
 
 ## 14. Resume Description

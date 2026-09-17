@@ -210,8 +210,8 @@ class SurfaceHistory:
             "n_snapshots": len(hist),
             "first": str(pd.Timestamp(hist["date"].iloc[0]).date()),
             "last": str(pd.Timestamp(hist["date"].iloc[-1]).date()),
-            "metrics": int(len([c for c in hist.columns
-                                if c not in {"date", "ticker"}])),
+            "metrics": len([c for c in hist.columns
+                                if c not in {"date", "ticker"}]),
         }
 
 

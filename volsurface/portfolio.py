@@ -27,9 +27,10 @@ currency units per vol point.
 """
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Literal, Sequence
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -92,11 +93,11 @@ class Portfolio:
         return len(self.positions)
 
     @classmethod
-    def from_records(cls, records: Iterable[dict], name: str = "book") -> "Portfolio":
+    def from_records(cls, records: Iterable[dict], name: str = "book") -> Portfolio:
         return cls([Position(**r) for r in records], name=name)
 
     @classmethod
-    def from_csv(cls, path: str | Path, name: str | None = None) -> "Portfolio":
+    def from_csv(cls, path: str | Path, name: str | None = None) -> Portfolio:
         """
         Load from a CSV with columns:
         instrument, quantity, strike, expiry[, multiplier, label]
@@ -195,7 +196,7 @@ def price_portfolio(portfolio: Portfolio, surface, spot: float | None = None,
                                   f"{pd.Timestamp(pos.expiry).date()}",
             "instrument": pos.instrument, "quantity": pos.quantity,
             "strike": pos.strike, "expiry": pos.expiry,
-            "days": int(round(T * CALENDAR_DAYS)), "T": T, "forward": forward,
+            "days": round(T * CALENDAR_DAYS), "T": T, "forward": forward,
             "k": float(k), "iv": iv, "price": price, "value": price * scale,
             "delta": float(g["delta"]) * scale,
             "gamma": float(g["gamma"]) * scale,
@@ -226,7 +227,7 @@ def aggregate_risk(priced: pd.DataFrame) -> dict[str, float]:
         "vega_per_vol_point": float(priced["vega"].sum()),
         "theta_per_day": float(priced["theta"].sum()),
         "gross_notional": float(priced["notional"].sum()),
-        "n_positions": int(len(priced)),
+        "n_positions": len(priced),
         # Dollar-gamma: what a 1% move does to delta, the number that tells you
         # how fast the hedge goes stale.
         "delta_change_per_1pct": gamma * spot * spot * 0.01,
@@ -328,7 +329,7 @@ def example_portfolio(surface, spot: float | None = None) -> Portfolio:
     asof = pd.Timestamp(surface.asof).normalize()
 
     def expiry_of(T: float) -> pd.Timestamp:
-        return asof + pd.Timedelta(days=int(round(T * CALENDAR_DAYS)))
+        return asof + pd.Timedelta(days=round(T * CALENDAR_DAYS))
 
     def round_strike(x: float) -> float:
         return float(np.round(x / 5.0) * 5.0)

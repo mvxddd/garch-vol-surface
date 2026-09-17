@@ -8,9 +8,10 @@ magic numbers are buried in the analytics code.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field, asdict
+from collections.abc import Sequence
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import Literal
 
 # --------------------------------------------------------------------------- #
 # Constants used across the whole engine
@@ -185,7 +186,7 @@ class Config:
 
     @classmethod
     def for_production(cls, ticker: str, provider: str = "polygon",
-                       allow_unlicensed: bool = False) -> "Config":
+                       allow_unlicensed: bool = False) -> Config:
         """
         A config safe to serve results from, as opposed to research defaults.
 
@@ -228,7 +229,7 @@ class Config:
             )
         return cfg
 
-    def with_ticker(self, ticker: str) -> "Config":
+    def with_ticker(self, ticker: str) -> Config:
         """Convenience for notebooks: same config, different underlying."""
         self.data.ticker = ticker
         return self

@@ -90,7 +90,6 @@ def binomial_price(
 
     s, k, t = S_f[ok], K_f[ok], T_f[ok]
     sg, rr, qq, cc = sig_f[ok], r_f[ok], q_f[ok], call_f[ok]
-    m = s.size
 
     dt = t / steps
     u = np.exp(sg * np.sqrt(dt))

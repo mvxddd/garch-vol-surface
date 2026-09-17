@@ -122,9 +122,9 @@ def test_stale_fallback_quotes_are_dropped_but_live_ones_kept():
     """
     from volsurface.data.clean import clean_option_chain
 
-    base = dict(expiry=ASOF + pd.Timedelta(days=30), option_type="call",
-                volume=10, open_interest=500, provider_iv=0.2, spot=SPOT,
-                asof=ASOF, synthetic=False)
+    base = {"expiry": ASOF + pd.Timedelta(days=30), "option_type": "call",
+                "volume": 10, "open_interest": 500, "provider_iv": 0.2, "spot": SPOT,
+                "asof": ASOF, "synthetic": False}
     old = pd.Timestamp(ASOF - pd.Timedelta(days=9), tz="UTC")
     fresh = pd.Timestamp(ASOF, tz="UTC")
 

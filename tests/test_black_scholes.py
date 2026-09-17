@@ -4,9 +4,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from volsurface.models.black_scholes import (black76_price, greeks,
-                                             implied_forward_from_parity,
-                                             implied_vol, vega)
+from volsurface.models.black_scholes import (
+    black76_price,
+    greeks,
+    implied_forward_from_parity,
+    implied_vol,
+    vega,
+)
 
 RNG = np.random.default_rng(20260902)
 

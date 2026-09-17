@@ -6,7 +6,7 @@ import pandas as pd
 
 from ..config import DataConfig
 from ..utils import cache_path, get_logger, read_cache, write_cache
-from .providers import VOL_INDEX_MAP, get_provider
+from .providers import VOL_INDEX_MAP, get_provider  # noqa: F401 (re-export)
 from .synthetic import synthetic_prices
 
 LOG = get_logger("volsurface.prices")
@@ -99,11 +99,9 @@ def compute_returns(prices: pd.DataFrame, field: str = "Close",
 # --------------------------------------------------------------------------- #
 # Implied-volatility index (for the historical volatility-risk-premium study)
 # --------------------------------------------------------------------------- #
-VOL_INDEX_MAP = {
-    "SPY": "^VIX", "SPX": "^VIX", "^GSPC": "^VIX", "ES=F": "^VIX", "VOO": "^VIX",
-    "QQQ": "^VXN", "^NDX": "^VXN", "NQ=F": "^VXN",
-    "IWM": "^RVX", "DIA": "^VXD", "GLD": "^GVZ", "USO": "^OVX", "TLT": "^VXTLT",
-}
+# VOL_INDEX_MAP lives in `providers` and is re-exported here for callers that
+# already import it from this module. One definition on purpose: two copies of
+# the same mapping agree right up until someone adds a ticker to one of them.
 
 
 def load_vol_index(cfg: DataConfig, index_ticker: str | None = None
